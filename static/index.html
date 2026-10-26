@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PIDS · Predictive Intrusion Detection</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js: local copy first (static/chart.umd.min.js), CDN as a fallback -->
+    <script src="chart.umd.min.js"></script>
+    <script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>');</script>
+</head>
+
+<body>
+    <header>
+        <h1>Predictive Intrusion Detection System · Monitoring Dashboard</h1>
+        <span id="status" class="pill"></span>
+    </header>
+    <p class="meta note">Replay of labelled CIC-IDS2017 flows. The class mix is a demo sample (attacks
+        over-represented), not real-world traffic proportions.</p>
+    <div id="error" class="banner error hidden"></div>
+    <div id="warning" class="banner warn hidden"></div>
+
+    <div class="layout">
+        <aside class="controls">
+            <h2>Controls</h2>
+            <label class="row"><input type="checkbox" id="live" checked> Live stream</label>
+
+            <label>Traffic source
+                <select id="source">
+                    <option value="replay">Replay (demo data)</option>
+                    <option value="watch">Watch flows file</option>
+                    <option value="upload">Upload flows CSV</option>
+                </select>
+            </label>
+            <label id="watchBox" class="hidden">Flows CSV in the live/ folder
+                <input id="watchPath" value="live/flows.csv">
+            </label>
+            <label id="uploadBox" class="hidden">Flows CSV (max 150 MB)
+                <input type="file" id="uploadFile" accept=".csv">
+                <span id="uploadMsg" class="meta"></span>
+            </label>
+
+            <label>Events per tick (2 s)
+                <input type="number" id="rate" min="1" max="500" value="20">
+            </label>
+            <label>Replay day <select id="day"></select></label>
+            <button id="jump">Jump to day</button>
+            <button id="ff" title="Replay mode: scores about 2 minutes of traffic at once">Fast-forward 2 min</button>
+
+            <label>Min confidence <span id="minConfVal">0.00</span>
+                <input type="range" id="minConf" min="0" max="1" step="0.05" value="0">
+            </label>
+
+            <fieldset>
+                <legend>Severity</legend>
+                <label class="row"><input type="checkbox" class="sev" value="Critical" checked> Critical</label>
+                <label class="row"><input type="checkbox" class="sev" value="High" checked> High</label>
+                <label class="row"><input type="checkbox" class="sev" value="Medium" checked> Medium</label>
+                <label class="row"><input type="checkbox" class="sev" value="Info"> Info</label>
+            </fieldset>
+
+            <fieldset>
+                <legend>Attack family</legend>
+                <div id="famBox"></div>
+            </fieldset>
+
+            <button id="clear" class="danger">Clear history</button>
+            <a class="btn" href="/api/export">Export alerts (CSV)</a>
+            <p id="meta" class="meta"></p>
+        </aside>
+
+        <main>
+            <p id="waiting" class="meta">Waiting for traffic… (switch “Live stream” on)</p>
+            <section id="kpis" class="kpis"></section>
+
+            <section class="panel">
+                <h3>Live feed: latest flows</h3>
+                <div class="scroll">
+                    <table id="feed"></table>
+                </div>
+            </section>
+
+            <section class="grid3">
+                <div class="panel">
+                    <h3>Traffic over time</h3>
+                    <div class="chart"><canvas id="trafficChart"></canvas></div>
+                </div>
+                <div class="panel">
+                    <h3>Attack-type breakdown</h3>
+                    <div class="chart"><canvas id="familyChart"></canvas></div>
+                </div>
+                <div class="panel">
+                    <h3>Top attacking source IPs</h3>
+                    <ol id="topIps" class="list"></ol>
+                </div>
+            </section>
+
+            <section class="grid2">
+                <div class="panel">
+                    <h3>Most targeted ports</h3>
+                    <div class="chart"><canvas id="portsChart"></canvas></div>
+                </div>
+                <div class="panel">
+                    <h3 id="histTitle">Score distribution</h3>
+                    <div class="chart"><canvas id="histChart"></canvas></div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h3>Predictive outlook (next ~60 s)</h3>
+                <p id="fcNote" class="meta"></p>
+                <div id="fcKpis" class="kpis small"></div>
+                <div class="chart tall"><canvas id="forecastChart"></canvas></div>
+                <p id="fcFamily" class="meta"></p>
+            </section>
+
+            <section class="panel">
+                <h3>Incidents <span class="meta">(attacks from the same source and family within 60 s are
+                        grouped)</span></h3>
+                <p id="incSummary" class="meta"></p>
+                <div class="scroll">
+                    <table id="incidents"></table>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h3>Alert queue <span class="meta">(click a row to investigate)</span></h3>
+                <div class="scroll">
+                    <table id="queue"></table>
+                </div>
+            </section>
+
+            <section class="panel" id="explainPanel">
+                <h3>Why the model decides: top features</h3>
+                <p class="meta">Importance shows what the model relies on, not whether a feature points towards attack
+                    or benign. SHAP uses attack flows only (class-balanced over attack types, taken from replay flows)
+                    and the attack-class probabilities as the output. Kernel SHAP measures the difference from typical
+                    benign traffic and estimates by sampling, so rankings can shift a little between runs.</p>
+                <div class="grid2">
+                    <div>
+                        <h4>Built-in importance (instant)</h4>
+                        <div id="impBuiltin"></div>
+                    </div>
+                    <div>
+                        <h4>SHAP: mean impact
+                            <select id="shapClass">
+                                <option value="">All attack classes</option>
+                            </select>
+                        </h4>
+                        <div class="rowline">
+                            <label>Method
+                                <select id="shapMethod">
+                                    <option value="kernel" selected>Kernel (any model, slow)</option>
+                                    <option value="tree">Tree (fast, trees only)</option>
+                                </select>
+                            </label>
+                            <label>Flows to explain
+                                <select id="shapN">
+                                    <option>20</option>
+                                    <option selected>40</option>
+                                    <option>80</option>
+                                    <option>150</option>
+                                </select>
+                            </label>
+                            <label class="kOnly">Evaluations per flow
+                                <select id="shapNs">
+                                    <option value="200">200 (rough)</option>
+                                    <option value="500" selected>500</option>
+                                    <option value="1000">1000 (slow)</option>
+                                </select>
+                            </label>
+                            <label class="kOnly">Time limit
+                                <select id="shapBudget">
+                                    <option value="60">1 min</option>
+                                    <option value="120" selected>2 min</option>
+                                    <option value="300">5 min</option>
+                                </select>
+                            </label>
+                            <label class="tOnly hidden">Trees
+                                <select id="shapTrees">
+                                    <option value="0">All</option>
+                                    <option value="50">First 50 (faster)</option>
+                                    <option value="25">First 25 (fastest)</option>
+                                </select>
+                            </label>
+                            <button id="shapRun">Compute SHAP</button>
+                            <button id="shapStop" class="hidden">Stop</button>
+                        </div>
+                        <p id="shapMsg" class="meta"></p>
+                        <div id="impShap"></div>
+                    </div>
+                </div>
+            </section>
+
+            <details id="healthBox" class="panel">
+                <summary>Model health vs ground truth</summary>
+                <p id="healthWarn" class="meta"></p>
+                <div class="scroll">
+                    <table id="healthTable"></table>
+                </div>
+                <h3>Confusion matrix (row-normalised)</h3>
+                <div class="scroll">
+                    <table id="cmTable" class="cm"></table>
+                </div>
+                <h3>Calibration: accuracy per confidence bin</h3>
+                <div class="chart"><canvas id="calibChart"></canvas></div>
+            </details>
+        </main>
+    </div>
+
+    <aside id="drawer" class="drawer hidden">
+        <button id="drawerClose" class="close">Close ✕</button>
+        <div id="drawerBody"></div>
+    </aside>
+
+    <script src="app.js"></script>
+    <script src="extras.js"></script>
+</body>
+
+</html>
