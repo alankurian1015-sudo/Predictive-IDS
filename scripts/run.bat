@@ -8,6 +8,7 @@ if not exist .venv\Scripts\activate.bat (
   exit /b 1
 )
 call .venv\Scripts\activate.bat
+set PYTHONPATH=%cd%
 echo Starting the dashboard on http://localhost:%PORT%  (the first start can take about a minute)
 start "" cmd /c "timeout /t 25 /nobreak >nul & start http://localhost:%PORT%"
 uvicorn backend.server:app --port %PORT%
