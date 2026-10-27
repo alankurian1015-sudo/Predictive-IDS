@@ -17,14 +17,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sklearn.metrics import precision_recall_fscore_support
 
-import extras
-from common import SEV_ORDER, STATUSES, norm_label
-from detector import Detector
-from feed import CsvTail, align, finish
-from forecast import attack_share_series, backtest, holt_forecast, risk_level
-from stream import TrafficStream
+from backend import extras
+from backend.common import SEV_ORDER, STATUSES, norm_label
+from backend.detector import Detector
+from backend.feed import CsvTail, align, finish
+from backend.forecast import attack_share_series, backtest, holt_forecast, risk_level
+from backend.stream import TrafficStream
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(__file__).resolve().parent.parent      # project root (one level above backend/)
 LIVE_DIR = (BASE / "live").resolve()
 TICK_SECONDS = 2                       # one scoring step every 2 s
 MAX_ROWS = 20_000                      # alert buffer size
@@ -434,4 +434,4 @@ extras.ctx.update(S=S, LOCK=LOCK, det=det, stream=stream)
 app.include_router(extras.router)
 
 # Must come LAST: it serves the web page at "/"
-app.mount("/", StaticFiles(directory=BASE / "static", html=True), name="static")
+app.mount("/", StaticFiles(directory=BASE / "frontend", html=True), name="static")

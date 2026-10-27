@@ -1,8 +1,8 @@
 import os
 
-from common import family_of, norm_label
-from detector import Detector
-from stream import TrafficStream
+from backend.common import family_of, norm_label
+from backend.detector import Detector
+from backend.stream import TrafficStream
 
 print("== Files ==")
 for p in ["models/label_encoder.joblib", "models/feature_cols.joblib", "data/test_stream.parquet"]:

@@ -3,8 +3,8 @@ import time
 
 import pandas as pd
 
-from detector import Detector
-from feed import CsvTail, align, finish
+from backend.detector import Detector
+from backend.feed import CsvTail, align, finish
 
 PATH = "live/flows.csv"
 print("working folder:", os.getcwd())

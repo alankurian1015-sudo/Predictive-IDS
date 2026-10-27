@@ -5,7 +5,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from common import clip10, family_of, severity  # clip10 import lets joblib unpickle
+from backend.common import clip10, family_of, severity  # clip10 import lets joblib unpickle
 
 
 class Detector:

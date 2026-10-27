@@ -9,3 +9,4 @@ tensorflow
 xgboost
 scikit-learn==1.6.1
 shap
+pytest

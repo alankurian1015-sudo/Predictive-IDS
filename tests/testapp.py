@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from common import family_of, norm_label, severity
-from feed import CsvTail, align, finish
-from forecast import attack_share_series, backtest, holt_forecast, risk_level
+from backend.common import family_of, norm_label, severity
+from backend.feed import CsvTail, align, finish
+from backend.forecast import attack_share_series, backtest, holt_forecast, risk_level
 
 LABELS = ["BENIGN", "DDoS", "PortScan", "SSH-Patator", "Bot"]
 
@@ -23,7 +23,7 @@ class FakeDetector:
     feats = all_feats = ["f1", "f2"]
 
     def predict(self, batch):
-        from common import family_of, severity
+        from backend.common import family_of, severity
         rng = np.random.default_rng(len(batch))
         pred = np.array(LABELS)[rng.integers(0, len(LABELS), len(batch))]
         conf = rng.uniform(0.5, 1.0, len(batch))
@@ -67,11 +67,11 @@ class FakeStream:
 
 @pytest.fixture()
 def srv(monkeypatch):
-    monkeypatch.setitem(sys.modules, "detector", types.SimpleNamespace(Detector=FakeDetector))
-    monkeypatch.setitem(sys.modules, "stream", types.SimpleNamespace(TrafficStream=FakeStream))
-    for m in ("server", "extras"):
+    monkeypatch.setitem(sys.modules, "backend.detector", types.SimpleNamespace(Detector=FakeDetector))
+    monkeypatch.setitem(sys.modules, "backend.stream", types.SimpleNamespace(TrafficStream=FakeStream))
+    for m in ("backend.server", "backend.extras"):
         sys.modules.pop(m, None)
-    import server
+    from backend import server
     from fastapi.testclient import TestClient
     server.SELFTEST = None
     return server, TestClient(server.app)          # no `with`: the background loop stays off, tests call step() themselves

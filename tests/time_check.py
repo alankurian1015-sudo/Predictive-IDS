@@ -1,7 +1,7 @@
 import time
 
-from detector import Detector
-from stream import TrafficStream
+from backend.detector import Detector
+from backend.stream import TrafficStream
 
 det, strm = Detector(), TrafficStream()
 batch = strm.df.sample(20, random_state=0)

@@ -22,19 +22,62 @@ attack share for the next minute, and lets an analyst triage alerts.
 ## Architecture
 
 ```
-replay / watched CSV / upload  ->  detector.py  ->  alert buffer  ->  FastAPI (server.py)  ->  HTML/JS page
-                                  (classifier +                        extras.py
-                                   autoencoder)                        (incidents, SHAP)
+replay / watched CSV / upload  ->  backend/detector.py  ->  alert buffer  ->  FastAPI (backend/server.py)  ->  HTML/JS page
+                                   (classifier +                               backend/extras.py
+                                    autoencoder)                               (incidents, SHAP)
+```
+
+## Project Structure
+
+```
+Predictive-IDS/
+├── README.md
+├── requirements.txt
+├── .gitignore
+│
+├── backend/                     # All Python backend code
+│   ├── __init__.py
+│   ├── server.py                # FastAPI app (main entry point)
+│   ├── common.py                # Shared labels, severity rules
+│   ├── detector.py              # ML model loading & prediction
+│   ├── feed.py                  # CSV parsing & alignment
+│   ├── forecast.py              # Holt smoothing & risk levels
+│   ├── stream.py                # Parquet replay stream
+│   └── extras.py                # Incidents & SHAP router
+│
+├── frontend/                    # Static web assets
+│   ├── index.html
+│   ├── style.css
+│   ├── app.js
+│   └── extras.js
+│
+├── scripts/                     # Batch files & utility scripts
+│   ├── setup.bat
+│   ├── run.bat
+│   ├── check.bat
+│   ├── simulate_feed.py
+│   ├── check_setup.py
+│   └── diagnose_xgb.py
+│
+├── tests/                       # All test files
+│   ├── __init__.py
+│   ├── testapp.py
+│   ├── test_watch.py
+│   └── time_check.py
+│
+├── models/                      # (gitignored) ML model artifacts
+├── data/                        # (gitignored) Stream data
+└── live/                        # (gitignored) Watched CSV feed
 ```
 
 ## Quick start (Windows)
 
 1. Install Python 3.10 to 3.12.
-2. Double-click `setup.bat` (first time only).
-3. Put your files in place (see below), then double-click `check.bat`.
-4. Double-click `run.bat`. Open http://localhost:8765 if it does not open by itself.
+2. Double-click `scripts/setup.bat` (first time only).
+3. Put your files in place (see below), then double-click `scripts/check.bat`.
+4. Double-click `scripts/run.bat`. Open http://localhost:8765 if it does not open by itself.
 
-Manual start: activate `.venv`, then `uvicorn server:app --port 8765`.
+Manual start: activate `.venv`, then `uvicorn backend.server:app --port 8765`.
 
 ## Files you must provide
 
@@ -85,8 +128,8 @@ They are exported from the training notebook. Install the same scikit-learn vers
 
 | Problem | Fix |
 |---|---|
-| `[WinError 10013]` on start | Change `PORT` in `run.bat` |
-| Blank page, red console errors | Press Ctrl+F5; check `static/` has index.html, style.css, app.js, extras.js |
+| `[WinError 10013]` on start | Change `PORT` in `scripts/run.bat` |
+| Blank page, red console errors | Press Ctrl+F5; check `frontend/` has index.html, style.css, app.js, extras.js |
 | "Model features missing" | The file's columns differ from the model's training features |
 | SHAP panel says not installed | `pip install shap` |
 
