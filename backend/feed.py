@@ -1,4 +1,5 @@
 """feed.py: turns incoming flow records (CSV rows) into rows the detector can score."""
+import io
 import re
 from io import StringIO
 from pathlib import Path
@@ -69,8 +70,10 @@ def finish(df, feats):
     """Clean numbers and fill display columns, so the detector always gets what it needs."""
     df = df.copy()
     for c in feats:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=feats).reset_index(drop=True)
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    valid_feats = [c for c in feats if c in df.columns]
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=valid_feats).reset_index(drop=True)
 
     if "Destination Port" not in df.columns:
         df["Destination Port"] = 0
@@ -85,7 +88,61 @@ def finish(df, feats):
     for c, default in [("Source IP", "unknown"), ("Destination IP", "unknown"), ("Label", "(unlabelled)")]:
         if c not in df.columns:
             df[c] = default
+        else:
+            df[c] = df[c].fillna(default)
     return df
+
+
+def validate_and_preprocess_csv(source, feats, max_rows=None):
+    """Validate and preprocess CSV content (bytes, path, buffer, or DataFrame).
+
+    Validates:
+    - Non-empty content
+    - Parseability as CSV
+    - Presence of data rows
+    - Presence of all required model features (with alias/abbreviation resolution)
+    - Numeric validity (handling infinities and dropping rows with missing features)
+    - Metadata completion (Timestamp, IPs, Destination Port, Label)
+
+    Returns (cleaned_df, None) on success, or (None, error_message) on validation failure.
+    """
+    if source is None:
+        return None, "No data provided."
+
+    try:
+        if isinstance(source, (bytes, bytearray)):
+            if len(source) == 0:
+                return None, "Uploaded file is empty."
+            raw = pd.read_csv(
+                io.BytesIO(source),
+                nrows=max_rows,
+                low_memory=False,
+                encoding_errors="replace",
+            )
+        elif isinstance(source, (str, Path)):
+            p = Path(source)
+            if not p.exists() or p.stat().st_size == 0:
+                return None, f"File {source} does not exist or is empty."
+            raw = pd.read_csv(p, nrows=max_rows, low_memory=False, encoding_errors="replace")
+        elif isinstance(source, pd.DataFrame):
+            raw = source.iloc[:max_rows].copy() if max_rows else source.copy()
+        else:
+            raw = pd.read_csv(source, nrows=max_rows, low_memory=False, encoding_errors="replace")
+    except Exception as e:
+        return None, f"Could not read this file as a CSV: {e}"
+
+    if raw.empty:
+        return None, "The uploaded CSV file contains no data rows."
+
+    frame, missing = align(raw, feats)
+    if missing:
+        return None, f"{len(missing)} model features not found in this file, e.g. {missing[:5]}"
+
+    fin = finish(frame, feats)
+    if fin.empty:
+        return None, "No usable flow rows found in CSV (all rows had missing or non-numeric feature values)."
+
+    return fin, None
 
 
 class CsvTail:

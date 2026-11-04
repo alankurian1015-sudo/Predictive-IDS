@@ -20,7 +20,8 @@ from sklearn.metrics import precision_recall_fscore_support
 from backend import extras
 from backend.common import SEV_ORDER, STATUSES, norm_label
 from backend.detector import Detector
-from backend.feed import CsvTail, align, finish
+from backend.feed import CsvTail, align, finish, validate_and_preprocess_csv
+from backend.pcap import is_pcap_data, process_pcap_to_flows, verify_cicflowmeter
 from backend.forecast import attack_share_series, backtest, holt_forecast, risk_level
 from backend.stream import TrafficStream
 
@@ -409,24 +410,34 @@ def fastforward(f: FF):
     return {"ok": True, "scored": len(new)}
 
 
+@app.get("/api/pcap/info")
+def pcap_info():
+    """Verify CICFlowMeter installation, compatibility, and command syntax."""
+    return verify_cicflowmeter()
+
+
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...)):
     data = await file.read(MAX_UPLOAD + 1)
     if len(data) > MAX_UPLOAD:
         return {"ok": False, "error": "File too large (limit 150 MB). Make a smaller sample."}
-    try:
-        raw = pd.read_csv(io.BytesIO(data), nrows=MAX_UPLOAD_ROWS, low_memory=False, encoding_errors="replace")
-    except Exception:
-        return {"ok": False, "error": "Could not read this file as a CSV."}
-    frame, missing = align(raw, FEATS)
-    if missing:
-        return {"ok": False, "error": f"{len(missing)} model features not found in this file, e.g. {missing[:5]}"}
-    fin = finish(frame, FEATS)
+
+    # Inspect file extension and binary magic bytes to determine format
+    fname = (file.filename or "").lower()
+    if is_pcap_data(data) or fname.endswith((".pcap", ".pcapng", ".cap")):
+        fin, err = process_pcap_to_flows(data, FEATS)
+        file_type = "pcap"
+    else:
+        fin, err = validate_and_preprocess_csv(data, FEATS, max_rows=MAX_UPLOAD_ROWS)
+        file_type = "csv"
+
+    if err:
+        return {"ok": False, "error": err}
     with LOCK:
         S["backlog"].add(fin, replace=True)
         S["source"] = "upload"
         S["error"] = ""
-    return {"ok": True, "queued": int(len(fin))}
+    return {"ok": True, "queued": int(len(fin)), "type": file_type}
 
 
 # Extra endpoints (incidents, feature importance). Must be registered BEFORE the static mount below.

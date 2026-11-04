@@ -24,14 +24,14 @@ class Detector:
         self.ae_feats = [str(c).strip() for c in ae_f] if ae_f is not None else list(self.feats)
         self.all_feats = list(dict.fromkeys(self.feats + self.ae_feats))
 
-        # If XGBoost was trained on a DataFrame, reuse its original column names
+        # If model was trained on a DataFrame, reuse its original column names
         names = getattr(self.clf, "feature_names_in_", None)
         if names is None and hasattr(self.clf, "get_booster"):     # only XGBoost has a booster
             b = self.clf.get_booster().feature_names
             names = b if b and not all(str(n).startswith("f") and str(n)[1:].isdigit() for n in b) else None
         self.model_names = list(names) if names is not None else None
 
-        self.pre = self._optional("preprocessor.joblib")             # what XGBoost saw (None = raw features)
+        self.pre = self._optional("preprocessor.joblib")             # what classifier saw (None = raw features)
         ae_pre = self._optional("ae_preprocessor.joblib")            # what the autoencoder saw
         self.ae_pre = ae_pre if ae_pre is not None else (self.pre if self.ae_feats == self.feats else None)
 
@@ -100,15 +100,27 @@ class Detector:
     def _xgb_input(self, arr):
         return pd.DataFrame(arr, columns=self.model_names) if self.model_names else arr
 
-    def predict(self, batch: pd.DataFrame) -> pd.DataFrame:
-        raw = batch[self.all_feats].replace([np.inf, -np.inf], np.nan)
-
-        # --- XGBoost: attack type + confidence ---
+    def prepare_rf_input(self, batch: pd.DataFrame):
+        """Select exact Random Forest features in their original training order and apply preprocessor if present."""
+        raw = batch[self.feats].replace([np.inf, -np.inf], np.nan)
         X = self.pre.transform(raw.values) if self.pre is not None else raw.values
-        proba = self.clf.predict_proba(self._xgb_input(X))
+        return self._xgb_input(X)
+
+    def prepare_ae_input(self, batch: pd.DataFrame):
+        """Prepare Autoencoder input using its independently verified feature schema and scaler."""
+        if self.ae is None:
+            return None
+        raw = batch[self.ae_feats].replace([np.inf, -np.inf], np.nan)
+        Xa = self.ae_pre.transform(raw.values) if self.ae_pre is not None else raw.values
+        return np.asarray(Xa, dtype="float32")
+
+    def predict(self, batch: pd.DataFrame) -> pd.DataFrame:
+        # --- Random Forest: attack type + confidence ---
+        X_rf = self.prepare_rf_input(batch)
+        proba = self.clf.predict_proba(X_rf)
         names = self.le.classes_
         if proba.shape[1] != len(names):
-            raise ValueError(f"XGBoost outputs {proba.shape[1]} classes but label_encoder has "
+            raise ValueError(f"Classifier outputs {proba.shape[1]} classes but label_encoder has "
                              f"{len(names)}. They must come from the same training run.")
         order = np.argsort(-proba, axis=1)[:, :3]
         predicted = names[order[:, 0]]
@@ -120,26 +132,25 @@ class Detector:
         top3 = [" | ".join(f"{n} {p:.2f}" for n, p in zip(rn, rp)) for rn, rp in zip(top_n, top_p)]
 
         # --- Autoencoder (optional): anomaly score, 1.0 = threshold ---
-        anomaly = np.full(len(raw), np.nan)
+        anomaly = np.full(len(batch), np.nan)
         if self.ae is not None:
-            Xa = self.ae_pre.transform(raw.values) if self.ae_pre is not None else raw.values
-            Xa = np.asarray(Xa, dtype="float32")
+            Xa = self.prepare_ae_input(batch)
             recon = self.ae(Xa, training=False).numpy()
             anomaly = np.mean((Xa - recon) ** 2, axis=1) / self.thr
 
         out = pd.DataFrame({
             "seen_at": datetime.now(),
-            "capture_time": batch["Timestamp"].values,
-            "src_ip": batch["Source IP"].values,
-            "dst_ip": batch["Destination IP"].values,
-            "dst_port": pd.to_numeric(batch["Destination Port"], errors="coerce").fillna(0).astype(int).values,
+            "capture_time": batch["Timestamp"].values if "Timestamp" in batch.columns else pd.Timestamp.now(),
+            "src_ip": batch["Source IP"].values if "Source IP" in batch.columns else "unknown",
+            "dst_ip": batch["Destination IP"].values if "Destination IP" in batch.columns else "unknown",
+            "dst_port": pd.to_numeric(batch["Destination Port"], errors="coerce").fillna(0).astype(int).values if "Destination Port" in batch.columns else 0,
             "predicted": predicted,
             "confidence": conf,
             "attack_score": attack_score,
             "anomaly_score": anomaly,
             "uncertainty": uncertainty,
             "top3": top3,
-            "actual": batch["Label"].values,   # ground truth: available only because this is a replay
+            "actual": batch["Label"].values if "Label" in batch.columns else "(unlabelled)",
         })
         out["family"] = [family_of(p) for p in out.predicted]
         out["severity"] = [severity(p, c, a, z) for p, c, a, z in
