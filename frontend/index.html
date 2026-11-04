@@ -30,14 +30,14 @@
                 <select id="source">
                     <option value="replay">Replay (demo data)</option>
                     <option value="watch">Watch flows file</option>
-                    <option value="upload">Upload flows CSV</option>
+                    <option value="upload">Upload flows CSV / PCAP</option>
                 </select>
             </label>
             <label id="watchBox" class="hidden">Flows CSV in the live/ folder
                 <input id="watchPath" value="live/flows.csv">
             </label>
-            <label id="uploadBox" class="hidden">Flows CSV (max 150 MB)
-                <input type="file" id="uploadFile" accept=".csv">
+            <label id="uploadBox" class="hidden">Flows CSV / PCAP (max 150 MB)
+                <input type="file" id="uploadFile" accept=".csv,.pcap,.pcapng,.cap">
                 <span id="uploadMsg" class="meta"></span>
             </label>
 
