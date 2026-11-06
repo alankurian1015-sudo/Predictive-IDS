@@ -12,7 +12,7 @@ attack share for the next minute, and lets an analyst triage alerts.
 - Live feed with a verdict per flow, KPIs, traffic and attack-type charts, top source IPs, targeted ports,
   score histogram
 - Alert queue ordered by severity, with Acknowledge / False positive / Escalate and an investigate drawer
-- Incidents: alerts from the same source and attack family within 60 s are merged into one row
+- Incidents & Predictive Kill-Chain: alerts from the same source and attack family within 60 s are merged; adversary progression across MITRE ATT&CK stages is modeled to forecast the next likely attack vector, probability, time window, and proactive countermeasure
 - Predictive outlook: Holt exponential smoothing on the attack share, risk level, early-warning banner
 - Model health against ground truth (precision/recall, confusion matrix, calibration)
 - Feature importance: built-in importances and SHAP (Kernel SHAP by default, Tree SHAP as a fast cross-check),

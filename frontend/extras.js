@@ -11,11 +11,17 @@ async function loadIncidents() {
             `(${(d.alerts_total / d.incidents_total).toFixed(1)} alerts per incident)`
             : "No attack incidents yet.";
         $("incidents").innerHTML = d.incidents.length
-            ? "<tr><th>Severity</th><th>Source</th><th>Type</th><th>Alerts</th><th>Targets</th><th>First</th><th>Last</th><th>Duration</th><th>Status</th><th>Actions</th></tr>" +
+            ? "<tr><th>Severity</th><th>Source</th><th>Current Type</th><th>Predicted Next Vector</th><th>Alerts</th><th>Targets</th><th>First</th><th>Last</th><th>Duration</th><th>Status</th><th>Actions</th></tr>" +
             d.incidents.map((r) => {
                 const a = `data-ip="${esc(r.src_ip)}" data-fam="${esc(r.family)}" data-first="${esc(r.first_id)}" data-last="${esc(r.last_id)}"`;
+                const pred = r.prediction || {};
+                const predHtml = pred.next_vector
+                    ? `<span class="pred-pill" title="Stage: ${esc(pred.stage)}&#10;Action: ${esc(pred.action)}"><span class="pred-badge">🔮 ${esc(pred.next_vector)}</span> <span class="pred-meta">${Math.round(pred.confidence * 100)}% · ${esc(pred.eta)}</span></span>`
+                    : '<span class="meta">—</span>';
                 return `<tr><td class="inc-sev-${esc(r.severity)}">${esc(r.severity)}</td><td>${esc(r.src_ip)}</td>
-            <td>${esc(r.label)} <span class="meta">(${esc(r.family)})</span></td><td>${r.n.toLocaleString()}</td>
+            <td>${esc(r.label)} <span class="meta">(${esc(r.family)})</span></td>
+            <td class="pred-cell">${predHtml}</td>
+            <td>${r.n.toLocaleString()}</td>
             <td>${r.dst_ips} IPs · ${r.dst_ports} ports</td><td>${esc(r.first)}</td><td>${esc(r.last)}</td>
             <td>${Math.round(r.duration_s)} s</td><td>${esc(r.status)}</td>
             <td><button ${a} data-status="Acknowledged">Ack</button>
