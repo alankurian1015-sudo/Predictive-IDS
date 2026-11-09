@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import sklearn
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -168,11 +168,51 @@ def step_locked():
         step()
 
 
+class ConnectionManager:
+    """Manages active WebSocket connections for real-time live push updates."""
+    def __init__(self):
+        self.active: set[WebSocket] = set()
+        self._lock = asyncio.Lock()
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        async with self._lock:
+            self.active.add(ws)
+
+    async def disconnect(self, ws: WebSocket):
+        async with self._lock:
+            self.active.discard(ws)
+
+    async def broadcast(self, message: dict):
+        async with self._lock:
+            clients = list(self.active)
+        for ws in clients:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                async with self._lock:
+                    self.active.discard(ws)
+
+ws_manager = ConnectionManager()
+
+
+def notify_ws():
+    """Fire-and-forget notification to active WebSocket clients on state changes."""
+    if ws_manager.active:
+        try:
+            loop_ = asyncio.get_running_loop()
+            loop_.create_task(ws_manager.broadcast({"type": "tick", "version": S["version"]}))
+        except RuntimeError:
+            pass
+
+
 async def loop():
     while True:
         try:
             await asyncio.to_thread(step_locked)
             S["fault"] = ""                          # a good tick clears an old scoring error
+            if ws_manager.active:
+                await ws_manager.broadcast({"type": "tick", "version": S["version"]})
         except Exception as e:                       # show the problem on the page instead of dying
             S["fault"] = f"{type(e).__name__}: {e}"
         await asyncio.sleep(TICK_SECONDS)
@@ -346,6 +386,7 @@ def control(c: Control):
             S["source"] = c.source
         if safe is not None:
             S["watch_path"] = safe
+    notify_ws()
     return {"ok": True}
 
 
@@ -359,6 +400,7 @@ def jump(j: Jump):
         return {"ok": False, "error": "No replay data for that day"}
     with LOCK:
         S["pos"] = stream.start_of(day)
+    notify_ws()
     return {"ok": True}
 
 
@@ -369,6 +411,7 @@ def clear():
         S["backlog"].clear()
         S["next_id"], S["error"], S["fault"] = 0, "", ""
         S["version"] += 1
+    notify_ws()
     return {"ok": True}
 
 
@@ -385,6 +428,7 @@ def set_status(s: Status):
                 df.loc[m, "status"] = s.status
                 S["alerts"] = df
                 S["version"] += 1
+    notify_ws()
     return {"ok": True}
 
 
@@ -407,6 +451,7 @@ def fastforward(f: FF):
         S["next_id"] = len(new)
         S["alerts"] = new.tail(MAX_ROWS).reset_index(drop=True)
         S["version"] += 1
+    notify_ws()
     return {"ok": True, "scored": len(new)}
 
 
@@ -437,11 +482,31 @@ async def upload(file: UploadFile = File(...)):
         S["backlog"].add(fin, replace=True)
         S["source"] = "upload"
         S["error"] = ""
+    notify_ws()
     return {"ok": True, "queued": int(len(fin)), "type": file_type}
 
 
 # Extra endpoints (incidents, feature importance). Must be registered BEFORE the static mount below.
-extras.ctx.update(S=S, LOCK=LOCK, det=det, stream=stream)
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        await websocket.send_json({"type": "connected", "version": S["version"]})
+        while True:
+            text = await websocket.receive_text()
+            try:
+                msg = json.loads(text)
+                if msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "version": S["version"]})
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket)
+    except Exception:
+        await ws_manager.disconnect(websocket)
+
+
+extras.ctx.update(S=S, LOCK=LOCK, det=det, stream=stream, notify_ws=notify_ws)
 app.include_router(extras.router)
 
 # Must come LAST: it serves the web page at "/"

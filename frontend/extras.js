@@ -1,5 +1,62 @@
-// extras.js: incidents and feature-importance panels.
+// extras.js: incidents, MITRE ATT&CK kill-chain progression, and model-explanation panels.
 // Loaded after app.js, which defines $, esc, num, pct, api and refresh().
+
+function renderKillChainOverview(stages) {
+    const box = $("killChainOverview");
+    if (!box) return;
+    if (!stages || !stages.length) {
+        box.innerHTML = "";
+        return;
+    }
+    const descs = {
+        1: "PortScan, probes & sweeps",
+        2: "Brute force & credentials",
+        3: "Web exploit, SQLi & XSS",
+        4: "Botnet C2 & lateral pivot",
+        5: "DoS/DDoS & exfiltration"
+    };
+    box.innerHTML = stages.map((s) => {
+        const active = s.count > 0;
+        return `
+        <div class="kc-stage-card stage-${s.num} ${active ? 'has-threats' : ''}">
+            <div class="kc-stage-header">
+                <span class="kc-stage-num">Stage ${s.num}</span>
+                <span class="kc-stage-badge">${s.count} ${s.count === 1 ? 'threat' : 'threats'}</span>
+            </div>
+            <div class="kc-stage-title">${esc(s.name)}</div>
+            <div class="kc-stage-desc">${esc(descs[s.num] || '')}</div>
+        </div>`;
+    }).join("");
+}
+
+function renderStepper(pred) {
+    if (!pred || !pred.next_vector) return '<span class="meta">—</span>';
+    const curr = pred.stage_num || 1;
+    const next = pred.next_stage_num || Math.min(5, curr + 1);
+
+    const nodes = [1, 2, 3, 4, 5].map((n) => {
+        let cls = "kc-node";
+        let title = "";
+        if (n === curr) {
+            cls += ` stage-${n} active`;
+            title = `Current stage: ${pred.stage}`;
+        } else if (n === next) {
+            cls += ` next`;
+            title = `Predicted next stage: ${pred.next_stage || 'Next'}`;
+        }
+        return `<span class="${cls}" title="${esc(title)}">${n}</span>`;
+    }).join('<span class="kc-node-arrow">›</span>');
+
+    return `
+    <div class="kc-stepper-track">
+        <div class="kc-stepper-nodes" title="Adversary Stage Progression: ${esc(pred.stage)} ➔ ${esc(pred.next_stage || 'Next')}">${nodes}</div>
+        <span class="pred-pill" title="Stage: ${esc(pred.stage)} ➔ ${esc(pred.next_stage || '')}&#10;Action: ${esc(pred.action)}">
+            <span class="pred-badge">🔮 ${esc(pred.next_vector)}</span>
+            <span class="pred-meta">${Math.round(pred.confidence * 100)}% · ${esc(pred.eta)}</span>
+        </span>
+        ${pred.action ? `<span class="kc-action-pill" title="Proactive SOC Countermeasure: ${esc(pred.action)}">🛡️ ${esc(pred.action)}</span>` : ''}
+    </div>`;
+}
 
 // ---------- incidents ----------
 async function loadIncidents() {
@@ -10,14 +67,14 @@ async function loadIncidents() {
             ? `${d.alerts_total.toLocaleString()} attack alerts grouped into ${d.incidents_total.toLocaleString()} incidents ` +
             `(${(d.alerts_total / d.incidents_total).toFixed(1)} alerts per incident)`
             : "No attack incidents yet.";
+
+        renderKillChainOverview(d.stage_summary);
+
         $("incidents").innerHTML = d.incidents.length
-            ? "<tr><th>Severity</th><th>Source</th><th>Current Type</th><th>Predicted Next Vector</th><th>Alerts</th><th>Targets</th><th>First</th><th>Last</th><th>Duration</th><th>Status</th><th>Actions</th></tr>" +
+            ? "<tr><th>Severity</th><th>Source</th><th>Current Type</th><th>Kill-Chain & Next Vector</th><th>Alerts</th><th>Targets</th><th>First</th><th>Last</th><th>Duration</th><th>Status</th><th>Actions</th></tr>" +
             d.incidents.map((r) => {
                 const a = `data-ip="${esc(r.src_ip)}" data-fam="${esc(r.family)}" data-first="${esc(r.first_id)}" data-last="${esc(r.last_id)}"`;
-                const pred = r.prediction || {};
-                const predHtml = pred.next_vector
-                    ? `<span class="pred-pill" title="Stage: ${esc(pred.stage)}&#10;Action: ${esc(pred.action)}"><span class="pred-badge">🔮 ${esc(pred.next_vector)}</span> <span class="pred-meta">${Math.round(pred.confidence * 100)}% · ${esc(pred.eta)}</span></span>`
-                    : '<span class="meta">—</span>';
+                const predHtml = renderStepper(r.prediction);
                 return `<tr><td class="inc-sev-${esc(r.severity)}">${esc(r.severity)}</td><td>${esc(r.src_ip)}</td>
             <td>${esc(r.label)} <span class="meta">(${esc(r.family)})</span></td>
             <td class="pred-cell">${predHtml}</td>
@@ -31,6 +88,8 @@ async function loadIncidents() {
             : "";
     } catch (e) { /* the main refresh already shows connection problems */ }
 }
+
+window.loadIncidents = loadIncidents;
 
 $("incidents").addEventListener("click", async (e) => {
     const b = e.target.closest("button[data-ip]");

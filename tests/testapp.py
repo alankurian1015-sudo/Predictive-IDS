@@ -74,6 +74,18 @@ def srv(monkeypatch):
     from backend import server
     from fastapi.testclient import TestClient
     server.SELFTEST = None
+    server.det = FakeDetector()
+    server.stream = FakeStream()
+    server.S["alerts"] = pd.DataFrame()
+    server.S["backlog"].clear()
+    server.S["next_id"] = 0
+    server.S["pos"] = 0
+    server.S["rate"] = 20
+    server.S["source"] = "replay"
+    server.S["version"] = 0
+    server.S["error"] = ""
+    server.S["fault"] = ""
+    server.extras.ctx.update(S=server.S, LOCK=server.LOCK, det=server.det, stream=server.stream)
     return server, TestClient(server.app)          # no `with`: the background loop stays off, tests call step() themselves
 
 

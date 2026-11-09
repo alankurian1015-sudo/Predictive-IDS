@@ -35,6 +35,12 @@ def predict_next_attack(family, label, top_port, n_ports, count):
     """
     Predicts the adversary's next likely attack stage, probability, estimated time window,
     and proactive SOC countermeasure based on MITRE ATT&CK / Kill-Chain progression.
+    Standard MITRE ATT&CK stages:
+    1: Reconnaissance
+    2: Initial Access
+    3: Exploitation
+    4: Lateral Movement & C2
+    5: Impact & Exfiltration
     """
     fam = str(family or "").strip()
     lab = str(label or "").lower()
@@ -49,6 +55,9 @@ def predict_next_attack(family, label, top_port, n_ports, count):
         if port in (22, 2222):
             return {
                 "stage": "Reconnaissance",
+                "stage_num": 1,
+                "next_stage": "Initial Access",
+                "next_stage_num": 2,
                 "next_vector": "SSH Brute Force",
                 "confidence": 0.84,
                 "eta": "60–120s",
@@ -57,6 +66,9 @@ def predict_next_attack(family, label, top_port, n_ports, count):
         elif port in (21, 20):
             return {
                 "stage": "Reconnaissance",
+                "stage_num": 1,
+                "next_stage": "Initial Access",
+                "next_stage_num": 2,
                 "next_vector": "FTP Brute Force",
                 "confidence": 0.81,
                 "eta": "60–120s",
@@ -65,6 +77,9 @@ def predict_next_attack(family, label, top_port, n_ports, count):
         elif port in (80, 443, 8080, 8443):
             return {
                 "stage": "Reconnaissance",
+                "stage_num": 1,
+                "next_stage": "Exploitation",
+                "next_stage_num": 3,
                 "next_vector": "Web Exploit / DoS",
                 "confidence": 0.79,
                 "eta": "90–180s",
@@ -73,6 +88,9 @@ def predict_next_attack(family, label, top_port, n_ports, count):
         elif n_ports > 10:
             return {
                 "stage": "Reconnaissance",
+                "stage_num": 1,
+                "next_stage": "Impact & Exfiltration",
+                "next_stage_num": 5,
                 "next_vector": "Volumetric DoS Flood",
                 "confidence": 0.76,
                 "eta": "45–90s",
@@ -81,6 +99,9 @@ def predict_next_attack(family, label, top_port, n_ports, count):
         else:
             return {
                 "stage": "Reconnaissance",
+                "stage_num": 1,
+                "next_stage": "Initial Access",
+                "next_stage_num": 2,
                 "next_vector": "Targeted Service Probe",
                 "confidence": 0.72,
                 "eta": "60–150s",
@@ -91,6 +112,9 @@ def predict_next_attack(family, label, top_port, n_ports, count):
     elif fam == "Brute force" or "patator" in lab:
         return {
             "stage": "Initial Access",
+            "stage_num": 2,
+            "next_stage": "Exploitation",
+            "next_stage_num": 3,
             "next_vector": "Infiltration / C2 Staging",
             "confidence": 0.82,
             "eta": "2–5 min",
@@ -100,7 +124,10 @@ def predict_next_attack(family, label, top_port, n_ports, count):
     # 3. Web Attacks (SQL Injection, XSS, Command Injection)
     elif fam == "Web attack" or "sql" in lab or "xss" in lab:
         return {
-            "stage": "Execution / Exploit",
+            "stage": "Exploitation",
+            "stage_num": 3,
+            "next_stage": "Impact & Exfiltration",
+            "next_stage_num": 5,
             "next_vector": "Data Exfiltration / Shell",
             "confidence": 0.78,
             "eta": "1–3 min",
@@ -110,7 +137,10 @@ def predict_next_attack(family, label, top_port, n_ports, count):
     # 4. Denial of Service (DoS / DDoS)
     elif fam == "DoS/DDoS" or "dos" in lab:
         return {
-            "stage": "Impact / Exhaustion",
+            "stage": "Impact & Exfiltration",
+            "stage_num": 5,
+            "next_stage": "Impact & Exfiltration",
+            "next_stage_num": 5,
             "next_vector": "Secondary Multi-Vector Surge",
             "confidence": 0.86,
             "eta": "30–60s",
@@ -120,7 +150,10 @@ def predict_next_attack(family, label, top_port, n_ports, count):
     # 5. Botnet / Command & Control
     elif fam == "Botnet" or "bot" in lab:
         return {
-            "stage": "Command & Control",
+            "stage": "Lateral Movement & C2",
+            "stage_num": 4,
+            "next_stage": "Impact & Exfiltration",
+            "next_stage_num": 5,
             "next_vector": "Coordinated DDoS Attack",
             "confidence": 0.89,
             "eta": "30–90s",
@@ -130,7 +163,10 @@ def predict_next_attack(family, label, top_port, n_ports, count):
     # 6. Infiltration / Exploits (Heartbleed, etc.)
     elif fam in ("Infiltration", "Exploit") or "heartbleed" in lab:
         return {
-            "stage": "Lateral Movement",
+            "stage": "Lateral Movement & C2",
+            "stage_num": 4,
+            "next_stage": "Impact & Exfiltration",
+            "next_stage_num": 5,
             "next_vector": "Privilege Escalation / Pivot",
             "confidence": 0.83,
             "eta": "2–4 min",
@@ -139,7 +175,10 @@ def predict_next_attack(family, label, top_port, n_ports, count):
 
     # Default fallback
     return {
-        "stage": "Active Threat",
+        "stage": "Reconnaissance",
+        "stage_num": 1,
+        "next_stage": "Initial Access",
+        "next_stage_num": 2,
         "next_vector": "Follow-up Probe",
         "confidence": 0.65,
         "eta": "1–3 min",
@@ -190,7 +229,24 @@ def _incident_payload(df):
             "duration_s": float(r.duration_s), "severity": r.severity, "status": r.status,
             "mean_conf": float(r.mean_conf), "dst_ips": int(r.dst_ips), "dst_ports": int(r.dst_ports),
             "prediction": pred})
-    return {"alerts_total": int(inc["n"].sum()), "incidents_total": int(len(inc)), "incidents": rows}
+    stage_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in rows:
+        sn = int(r.get("prediction", {}).get("stage_num", 1))
+        stage_counts[sn] = stage_counts.get(sn, 0) + 1
+
+    stage_summary = [
+        {"num": 1, "name": "Reconnaissance", "short": "Recon", "count": stage_counts.get(1, 0)},
+        {"num": 2, "name": "Initial Access", "short": "Access", "count": stage_counts.get(2, 0)},
+        {"num": 3, "name": "Exploitation", "short": "Exploit", "count": stage_counts.get(3, 0)},
+        {"num": 4, "name": "Lateral Movement & C2", "short": "Lateral/C2", "count": stage_counts.get(4, 0)},
+        {"num": 5, "name": "Impact & Exfiltration", "short": "Impact", "count": stage_counts.get(5, 0)},
+    ]
+    return {
+        "alerts_total": int(inc["n"].sum()),
+        "incidents_total": int(len(inc)),
+        "stage_summary": stage_summary,
+        "incidents": rows
+    }
 
 
 @router.get("/api/incidents")
@@ -226,6 +282,9 @@ def incident_status(b: IncidentStatus):
             df.loc[m, "status"] = b.status
             S["alerts"] = df
             S["version"] += 1
+    notify = ctx.get("notify_ws")
+    if notify:
+        notify()
     return {"ok": True, "updated": int(m.sum())}
 
 

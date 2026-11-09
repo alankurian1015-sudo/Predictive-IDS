@@ -18,12 +18,134 @@ async function api(path, body) {
     return res.json();
 }
 
+// ---------- theming & real-time websocket ----------
+function getPreferredTheme() {
+    const saved = localStorage.getItem("pids-theme");
+    if (saved === "dark" || saved === "light") return saved;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("pids-theme", theme);
+    const isDark = theme === "dark";
+    if ($("themeIcon")) $("themeIcon").textContent = isDark ? "☀️" : "🌙";
+    if ($("themeLabel")) $("themeLabel").textContent = isDark ? "Light" : "Dark";
+
+    const textColor = isDark ? "#c9d1d9" : "#1c2430";
+    const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+
+    if (typeof Chart !== "undefined") {
+        Chart.defaults.color = textColor;
+        [trafficChart, forecastChart, portsChart, histChart, calibChart].forEach((c) => {
+            if (c && c.options && c.options.scales) {
+                Object.values(c.options.scales).forEach((s) => {
+                    if (s.grid) s.grid.color = gridColor;
+                    if (s.ticks) s.ticks.color = textColor;
+                });
+                c.update("none");
+            }
+        });
+    }
+}
+
+function initTheme() {
+    const current = getPreferredTheme();
+    applyTheme(current);
+    const btn = $("themeToggle");
+    if (btn) {
+        btn.onclick = () => {
+            const cur = document.documentElement.getAttribute("data-theme") || "light";
+            applyTheme(cur === "dark" ? "light" : "dark");
+        };
+    }
+    if (window.matchMedia) {
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+            if (!localStorage.getItem("pids-theme")) {
+                applyTheme(e.matches ? "dark" : "light");
+            }
+        });
+    }
+}
+
+let ws = null;
+let wsBackoff = 1000;
+let wsConnected = false;
+
+function setWsStatus(online) {
+    const el = $("wsStatus");
+    if (!el) return;
+    if (online) {
+        el.textContent = "● WS: LIVE";
+        el.className = "pill pill-ws pulse";
+        el.title = "Real-time WebSocket Live Feed Active";
+    } else {
+        el.textContent = "○ HTTP: POLLING";
+        el.className = "pill pill-ws offline";
+        el.title = "WebSocket Disconnected (HTTP Polling Active)";
+    }
+}
+
+function initWebSocket() {
+    const wsProto = location.protocol === "https:" ? "wss://" : "ws://";
+    const wsUrl = wsProto + location.host + "/ws";
+    try {
+        ws = new WebSocket(wsUrl);
+    } catch (e) {
+        setWsStatus(false);
+        return;
+    }
+
+    ws.onopen = () => {
+        wsConnected = true;
+        wsBackoff = 1000;
+        setWsStatus(true);
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "tick" || msg.type === "connected") {
+                refresh();
+                if (typeof window.loadIncidents === "function") {
+                    window.loadIncidents();
+                }
+            }
+        } catch (e) { /* ignore parse error */ }
+    };
+
+    ws.onclose = () => {
+        wsConnected = false;
+        setWsStatus(false);
+        setTimeout(initWebSocket, Math.min(wsBackoff *= 1.5, 10000));
+    };
+
+    ws.onerror = () => {
+        wsConnected = false;
+        setWsStatus(false);
+    };
+}
+
 // ---------- charts ----------
 let trafficChart, familyChart, forecastChart, portsChart, histChart, calibChart;
 let chartsOk = false;
 
 function initCharts() {
-    const base = { responsive: true, maintainAspectRatio: false, animation: false };
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const textColor = isDark ? "#c9d1d9" : "#1c2430";
+    const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+    if (typeof Chart !== "undefined") {
+        Chart.defaults.color = textColor;
+    }
+    const base = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+            x: { grid: { color: gridColor }, ticks: { color: textColor } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor } }
+        }
+    };
     trafficChart = new Chart($("trafficChart"), {
         type: "line", data: { labels: [], datasets: [] },
         options: {
@@ -338,11 +460,13 @@ setInterval(() => { if (healthOpen) loadHealth(); }, 6000);
 
 // ---------- start ----------
 (async function start() {
+    initTheme();
     try { initCharts(); } catch (e) { console.warn("Charts unavailable:", e); }
     try {
         const days = await api("/api/days");
         $("day").innerHTML = days.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
     } catch (e) { /* the first refresh shows the error */ }
+    initWebSocket();
     refresh();
     setInterval(refresh, 2000);
 })();

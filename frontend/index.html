@@ -14,7 +14,13 @@
 <body>
     <header>
         <h1>Predictive Intrusion Detection System · Monitoring Dashboard</h1>
-        <span id="status" class="pill"></span>
+        <div class="header-right">
+            <button id="themeToggle" class="theme-toggle" type="button" title="Toggle Dark / Light Mode">
+                <span id="themeIcon">🌙</span> <span id="themeLabel">Dark</span>
+            </button>
+            <span id="wsStatus" class="pill pill-ws" title="Real-time WebSocket Live Feed">● WS: CONNECTING</span>
+            <span id="status" class="pill"></span>
+        </div>
     </header>
     <p class="meta note">Replay of labelled CIC-IDS2017 flows. The class mix is a demo sample (attacks
         over-represented), not real-world traffic proportions.</p>
@@ -118,6 +124,7 @@
             <section class="panel">
                 <h3>Incidents & Predictive Attack Vectors <span class="meta">(attacks from the same source grouped; next vector forecasted via MITRE kill-chain)</span></h3>
                 <p id="incSummary" class="meta"></p>
+                <div id="killChainOverview" class="kill-chain-matrix"></div>
                 <div class="scroll">
                     <table id="incidents"></table>
                 </div>
