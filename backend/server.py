@@ -11,13 +11,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import sklearn
-from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sklearn.metrics import precision_recall_fscore_support
 
-from backend import extras
+from backend import auth, extras
+from backend.auth import authenticate_websocket, get_current_user, require_role
 from backend.common import SEV_ORDER, STATUSES, norm_label
 from backend.detector import Detector
 from backend.feed import CsvTail, align, finish, validate_and_preprocess_csv
@@ -226,11 +227,12 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(auth.router)
 
 
 # ---------------- read endpoints ----------------
 @app.get("/api/days")
-def days():
+def days(user: dict = Depends(get_current_user)):
     return [d.isoformat() for d in stream.days()]
 
 
@@ -301,7 +303,7 @@ def _views(df, min_conf, sev, fams):
 
 
 @app.get("/api/state")
-def state(min_conf: float = 0.0, sev: str = "Critical,High,Medium", fams: str = ""):
+def state(min_conf: float = 0.0, sev: str = 'Critical,High,Medium', fams: str = '', user: dict = Depends(get_current_user)):
     ver = S["version"]                      # read the version BEFORE the table (see memo)
     df = S["alerts"]
     out = {"live": S["live"], "rate": S["rate"], "source": S["source"], "watch_path": S["watch_path"],
@@ -316,7 +318,7 @@ def state(min_conf: float = 0.0, sev: str = "Critical,High,Medium", fams: str = 
 
 
 @app.get("/api/alert/{event_id}")
-def alert(event_id: int):
+def alert(event_id: int, user: dict = Depends(get_current_user)):
     df = S["alerts"]
     row = df[df.event_id == event_id]
     if row.empty:
@@ -327,7 +329,7 @@ def alert(event_id: int):
 
 
 @app.get("/api/health")
-def health():
+def health(user: dict = Depends(get_current_user)):
     """Model health against ground truth (replay rows only; live feeds have no labels)."""
     ver = S["version"]
     df = S["alerts"]
@@ -356,7 +358,7 @@ def _health(df):
 
 
 @app.get("/api/export")
-def export():
+def export(user: dict = Depends(get_current_user)):
     cols = ["event_id", "seen_at", "capture_time", "src_ip", "dst_ip", "dst_port", "predicted", "verdict",
             "severity", "status", "confidence", "attack_score", "anomaly_score", "top3"]
     df = S["alerts"]
@@ -369,7 +371,7 @@ def export():
 
 # ---------------- write endpoints ----------------
 @app.post("/api/control")
-def control(c: Control):
+def control(c: Control, admin: dict = Depends(require_role(['admin']))):
     if c.source is not None and c.source not in ("replay", "watch", "upload"):
         return {"ok": False, "error": f"Unknown source: {c.source}"}
     safe = None
@@ -391,7 +393,7 @@ def control(c: Control):
 
 
 @app.post("/api/jump")
-def jump(j: Jump):
+def jump(j: Jump, admin: dict = Depends(require_role(['admin']))):
     try:
         day = dt.date.fromisoformat(j.day)
     except ValueError:
@@ -405,7 +407,7 @@ def jump(j: Jump):
 
 
 @app.post("/api/clear")
-def clear():
+def clear(admin: dict = Depends(require_role(['admin']))):
     with LOCK:
         S["alerts"] = pd.DataFrame()
         S["backlog"].clear()
@@ -416,7 +418,7 @@ def clear():
 
 
 @app.post("/api/status")
-def set_status(s: Status):
+def set_status(s: Status, analyst: dict = Depends(require_role(['admin', 'analyst']))):
     if s.status not in STATUSES:
         return {"ok": False, "error": f"Unknown status: {s.status}"}
     with LOCK:
@@ -433,7 +435,7 @@ def set_status(s: Status):
 
 
 @app.post("/api/fastforward")
-def fastforward(f: FF):
+def fastforward(f: FF, admin: dict = Depends(require_role(['admin']))):
     """Replay mode: score ~2 minutes of traffic at once, so the forecast has history immediately."""
     if S["source"] != "replay":
         return {"ok": False, "error": "Fast-forward works in replay mode only"}
@@ -456,13 +458,13 @@ def fastforward(f: FF):
 
 
 @app.get("/api/pcap/info")
-def pcap_info():
+def pcap_info(user: dict = Depends(get_current_user)):
     """Verify CICFlowMeter installation, compatibility, and command syntax."""
     return verify_cicflowmeter()
 
 
 @app.post("/api/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...), admin: dict = Depends(require_role(['admin']))):
     data = await file.read(MAX_UPLOAD + 1)
     if len(data) > MAX_UPLOAD:
         return {"ok": False, "error": "File too large (limit 150 MB). Make a smaller sample."}
@@ -489,6 +491,10 @@ async def upload(file: UploadFile = File(...)):
 # Extra endpoints (incidents, feature importance). Must be registered BEFORE the static mount below.
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    user = await authenticate_websocket(websocket)
+    if not user:
+        await websocket.close(code=4401, reason="Unauthorized")
+        return
     await ws_manager.connect(websocket)
     try:
         await websocket.send_json({"type": "connected", "version": S["version"]})

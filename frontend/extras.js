@@ -70,6 +70,19 @@ async function loadIncidents() {
 
         renderKillChainOverview(d.stage_summary);
 
+        const badge = $("incNavBadge");
+        if (badge) {
+            if (d.incidents_total > 0) {
+                badge.textContent = d.incidents_total;
+                badge.classList.remove("hidden");
+            } else {
+                badge.classList.add("hidden");
+            }
+        }
+
+        const isViewer = window.currentUser && window.currentUser.role === "viewer";
+        const triageDisabled = isViewer ? 'disabled title="Viewer role cannot triage alerts (Analyst required)"' : '';
+
         $("incidents").innerHTML = d.incidents.length
             ? "<tr><th>Severity</th><th>Source</th><th>Current Type</th><th>Kill-Chain & Next Vector</th><th>Alerts</th><th>Targets</th><th>First</th><th>Last</th><th>Duration</th><th>Status</th><th>Actions</th></tr>" +
             d.incidents.map((r) => {
@@ -81,28 +94,30 @@ async function loadIncidents() {
             <td>${r.n.toLocaleString()}</td>
             <td>${r.dst_ips} IPs · ${r.dst_ports} ports</td><td>${esc(r.first)}</td><td>${esc(r.last)}</td>
             <td>${Math.round(r.duration_s)} s</td><td>${esc(r.status)}</td>
-            <td><button ${a} data-status="Acknowledged">Ack</button>
-                <button ${a} data-status="False positive">False pos.</button>
-                <button ${a} data-status="Escalated">Escalate</button></td></tr>`;
+            <td><button ${a} data-status="Acknowledged" ${triageDisabled}>Ack</button>
+                <button ${a} data-status="False positive" ${triageDisabled}>False pos.</button>
+                <button ${a} data-status="Escalated" ${triageDisabled}>Escalate</button></td></tr>`;
             }).join("")
             : "";
-    } catch (e) { /* the main refresh already shows connection problems */ }
+    } catch (e) { /* connection error handled in refresh */ }
 }
 
 window.loadIncidents = loadIncidents;
 
-$("incidents").addEventListener("click", async (e) => {
-    const b = e.target.closest("button[data-ip]");
-    if (!b) return;
-    try {
-        await api("/api/incident/status", {
-            src_ip: b.dataset.ip, family: b.dataset.fam,
-            first_id: Number(b.dataset.first), last_id: Number(b.dataset.last), status: b.dataset.status
-        });
-    } catch (err) { alert("Could not update the incident: " + err.message); }
-    loadIncidents();
-    refresh();
-});
+if ($("incidents")) {
+    $("incidents").addEventListener("click", async (e) => {
+        const b = e.target.closest("button[data-ip]");
+        if (!b || b.disabled) return;
+        try {
+            await api("/api/incident/status", {
+                src_ip: b.dataset.ip, family: b.dataset.fam,
+                first_id: Number(b.dataset.first), last_id: Number(b.dataset.last), status: b.dataset.status
+            });
+        } catch (err) { alert("Could not update the incident: " + err.message); }
+        loadIncidents();
+        refresh();
+    });
+}
 setInterval(loadIncidents, 3000);
 loadIncidents();
 
@@ -119,6 +134,7 @@ function impList(rows) {
 }
 
 function syncMethod() {
+    if (!$("shapMethod")) return;
     const kernel = $("shapMethod").value === "kernel";
     document.querySelectorAll(".kOnly").forEach((e) => e.classList.toggle("hidden", !kernel));
     document.querySelectorAll(".tOnly").forEach((e) => e.classList.toggle("hidden", kernel));
@@ -127,30 +143,32 @@ function syncMethod() {
 function renderShap() {
     const d = explainData;
     if (!d) return;
-    $("impBuiltin").innerHTML = impList(d.builtin);
+    if ($("impBuiltin")) $("impBuiltin").innerHTML = impList(d.builtin);
     const sel = $("shapClass");
-    if (d.shap && sel.options.length <= 1) {
+    if (d.shap && sel && sel.options.length <= 1) {
         Object.keys(d.shap.per_class).forEach((c) => sel.add(new Option(c, c)));
     }
     const running = d.status === "running";
-    if (running) {
-        const p = d.progress;
-        $("shapMsg").textContent = p ? `Computing… ${p.done}/${p.total} flows` : "Computing… (preparing the sample)";
-    } else if (d.status === "error") {
-        $("shapMsg").textContent = d.error;
-    } else if (d.status === "done" && d.shap) {
-        const r = d.shap;
-        const how = r.method === "kernel" ? `Kernel SHAP, ${r.nsamples} evaluations per flow`
-            : (r.trees ? `Tree SHAP, first ${r.trees} trees` : "Tree SHAP, all trees");
-        $("shapMsg").textContent = `Done in ${d.seconds} s: ${how}, ${r.n} attack flows, benign excluded` +
-            (r.partial ? ` (stopped early: ${r.n} of ${r.planned} planned flows)` : "") + ".";
-    } else {
-        $("shapMsg").textContent = "Click “Compute SHAP” (runs in the background).";
+    if ($("shapMsg")) {
+        if (running) {
+            const p = d.progress;
+            $("shapMsg").textContent = p ? `Computing… ${p.done}/${p.total} flows` : "Computing… (preparing the sample)";
+        } else if (d.status === "error") {
+            $("shapMsg").textContent = d.error;
+        } else if (d.status === "done" && d.shap) {
+            const r = d.shap;
+            const how = r.method === "kernel" ? `Kernel SHAP, ${r.nsamples} evaluations per flow`
+                : (r.trees ? `Tree SHAP, first ${r.trees} trees` : "Tree SHAP, all trees");
+            $("shapMsg").textContent = `Done in ${d.seconds} s: ${how}, ${r.n} attack flows, benign excluded` +
+                (r.partial ? ` (stopped early: ${r.n} of ${r.planned} planned flows)` : "") + ".";
+        } else {
+            $("shapMsg").textContent = "Click “Compute SHAP” (runs in the background).";
+        }
     }
-    $("shapRun").disabled = running;
-    $("shapStop").classList.toggle("hidden", !(running && $("shapMethod").value === "kernel"));
-    const rows = d.shap ? (sel.value ? d.shap.per_class[sel.value] : d.shap.global) : null;
-    $("impShap").innerHTML = d.shap ? impList(rows) : "";
+    if ($("shapRun")) $("shapRun").disabled = running;
+    if ($("shapStop")) $("shapStop").classList.toggle("hidden", !(running && $("shapMethod").value === "kernel"));
+    const rows = d.shap ? (sel && sel.value ? d.shap.per_class[sel.value] : d.shap.global) : null;
+    if ($("impShap")) $("impShap").innerHTML = d.shap ? impList(rows) : "";
 }
 
 async function loadExplain() {
@@ -167,16 +185,18 @@ async function loadExplain() {
     } catch (e) { /* ignore */ }
 }
 
-$("shapMethod").onchange = () => { syncMethod(); renderShap(); };
-$("shapRun").onclick = async () => {
-    const r = await api("/api/explain/run", {
-        method: $("shapMethod").value, n: Number($("shapN").value), trees: Number($("shapTrees").value),
-        nsamples: Number($("shapNs").value), budget: Number($("shapBudget").value)
-    });
-    if (!r.ok) alert(r.error);
-    loadExplain();
-};
-$("shapStop").onclick = () => api("/api/explain/cancel", {}).then(loadExplain);
-$("shapClass").onchange = renderShap;
+if ($("shapMethod")) $("shapMethod").onchange = () => { syncMethod(); renderShap(); };
+if ($("shapRun")) {
+    $("shapRun").onclick = async () => {
+        const r = await api("/api/explain/run", {
+            method: $("shapMethod").value, n: Number($("shapN").value), trees: Number($("shapTrees").value),
+            nsamples: Number($("shapNs").value), budget: Number($("shapBudget").value)
+        });
+        if (!r.ok) alert(r.error);
+        loadExplain();
+    };
+}
+if ($("shapStop")) $("shapStop").onclick = () => api("/api/explain/cancel", {}).then(loadExplain);
+if ($("shapClass")) $("shapClass").onchange = renderShap;
 syncMethod();
 loadExplain();

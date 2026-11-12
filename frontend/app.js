@@ -9,13 +9,171 @@ const COLORS = {
 };
 const FAMILIES = ["Benign", "DoS/DDoS", "Recon", "Brute force", "Web attack", "Botnet", "Infiltration", "Exploit", "Other"];
 
+// ---------- Authentication & RBAC Session State ----------
+let currentUser = null;
+window.currentUser = null;
+
+async function checkAuth() {
+    try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) {
+            window.location.href = "/login.html";
+            return false;
+        }
+        const data = await res.json();
+        currentUser = data.user;
+        window.currentUser = data.user;
+        renderUserBadge();
+        applyRbacUI();
+        return true;
+    } catch (e) {
+        window.location.href = "/login.html";
+        return false;
+    }
+}
+
+function renderUserBadge() {
+    if (!currentUser) return;
+    if ($("userName")) $("userName").textContent = currentUser.full_name || currentUser.username;
+    const badge = $("userRoleBadge");
+    if (badge) {
+        badge.textContent = (currentUser.role || "analyst").toUpperCase();
+        badge.className = "role-badge " + currentUser.role;
+    }
+}
+
+function applyRbacUI() {
+    if (!currentUser) return;
+    const isAdmin = currentUser.role === "admin";
+    // Show/hide admin tabs
+    if ($("tabIngestion")) $("tabIngestion").style.display = isAdmin ? "" : "none";
+    if ($("tabUsers")) $("tabUsers").style.display = isAdmin ? "" : "none";
+}
+
 async function api(path, body) {
     const opts = body !== undefined
         ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
         : undefined;
     const res = await fetch(path, opts);
+    if (res.status === 401) {
+        window.location.href = "/login.html";
+        throw new Error("401 Unauthorized");
+    }
     if (!res.ok) throw new Error(res.status + " " + path);
     return res.json();
+}
+
+// ---------- Tab Routing (Multi-View) ----------
+function switchTab(tabId) {
+    document.querySelectorAll(".nav-tab").forEach((t) => {
+        t.classList.toggle("active", t.dataset.tab === tabId);
+    });
+    document.querySelectorAll(".page-view").forEach((v) => {
+        v.classList.add("hidden");
+    });
+    const target = $("view-" + tabId);
+    if (target) target.classList.remove("hidden");
+    window.location.hash = "#/" + tabId;
+
+    if (tabId === "users" && currentUser?.role === "admin") {
+        loadUsers();
+    }
+}
+
+function initRouting() {
+    const hash = (window.location.hash || "").replace("#/", "");
+    const valid = ["live", "incidents", "models", "ingestion", "users"];
+    const initial = valid.includes(hash) ? hash : "live";
+    switchTab(initial);
+
+    const tabs = $("navTabs");
+    if (tabs) {
+        tabs.addEventListener("click", (e) => {
+            const btn = e.target.closest(".nav-tab");
+            if (btn && btn.dataset.tab) {
+                switchTab(btn.dataset.tab);
+            }
+        });
+    }
+
+    window.addEventListener("hashchange", () => {
+        const h = (window.location.hash || "").replace("#/", "");
+        if (valid.includes(h)) switchTab(h);
+    });
+}
+
+// ---------- User Management (Admin Only) ----------
+async function loadUsers() {
+    if (!currentUser || currentUser.role !== "admin") return;
+    try {
+        const res = await api("/api/auth/users");
+        const tbody = $("usersTableBody");
+        if (!tbody || !res.users) return;
+        tbody.innerHTML = res.users.map((u) => `
+            <tr>
+                <td>${esc(u.id)}</td>
+                <td><strong>${esc(u.username)}</strong></td>
+                <td>${esc(u.full_name)}</td>
+                <td><span class="role-badge ${esc(u.role)}">${esc(u.role.toUpperCase())}</span></td>
+                <td>${u.last_login ? new Date(u.last_login).toLocaleString() : '<span class="meta">Never</span>'}</td>
+                <td>${u.id !== currentUser.id && u.is_active ?
+                    `<button class="btn-danger-outline" onclick="deactivateUser(${u.id})">Deactivate</button>` :
+                    '<span class="meta">—</span>'}</td>
+            </tr>
+        `).join("");
+    } catch (e) {
+        console.warn("loadUsers failed:", e);
+    }
+}
+
+window.deactivateUser = async (id) => {
+    if (!confirm("Are you sure you want to deactivate this user account?")) return;
+    try {
+        const res = await fetch("/api/auth/users/" + id, { method: "DELETE" });
+        if (res.ok) {
+            loadUsers();
+        } else {
+            const d = await res.json();
+            alert(d.detail || "Failed to deactivate user");
+        }
+    } catch (e) {
+        alert("Network error: failed to deactivate user");
+    }
+};
+
+function initUserManagement() {
+    const form = $("createUserForm");
+    if (form) {
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const msg = $("createUserMsg");
+            const username = $("newUsername").value.trim();
+            const password = $("newPassword").value;
+            const full_name = $("newFullName").value.trim();
+            const role = $("newRole").value;
+            msg.textContent = "Creating user…";
+            try {
+                const res = await fetch("/api/auth/users", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password, full_name, role })
+                });
+                const d = await res.json();
+                if (!res.ok) {
+                    msg.textContent = d.detail || "Error creating user";
+                    msg.style.color = "var(--bad)";
+                } else {
+                    msg.textContent = `User '${username}' created successfully!`;
+                    msg.style.color = "var(--ok)";
+                    form.reset();
+                    loadUsers();
+                }
+            } catch (err) {
+                msg.textContent = "Failed to create user";
+                msg.style.color = "var(--bad)";
+            }
+        };
+    }
 }
 
 // ---------- theming & real-time websocket ----------
@@ -222,81 +380,98 @@ function render(s) {
     const err = $("error");
     err.textContent = s.error || "";
     err.classList.toggle("hidden", !s.error);
-
     $("waiting").classList.toggle("hidden", s.has_data);
+
     if (!s.has_data) return;
 
-    const k = s.kpi;
-    $("kpis").innerHTML = kpiHtml([
-        ["Events seen (total)", s.total.toLocaleString()], ["Attack rate", pct(k.attack_rate, 1)],
-        ["Open critical", k.open_critical], ["Escalated", k.escalated],
-        ["Avg confidence", num(k.avg_conf)], ["Anomalies (>1.0)", k.anomalies ?? "n/a"],
-    ]);
+    // KPIs
+    const kpiItems = [
+        ["Attack rate (overall)", pct(s.kpi.attack_rate, 1)],
+        ["Critical (open)", s.kpi.open_critical],
+        ["Escalated", s.kpi.escalated],
+        ["Avg confidence", pct(s.kpi.avg_conf, 1)],
+    ];
+    if (s.kpi.anomalies !== null && s.kpi.anomalies !== undefined) {
+        kpiItems.push(["Anomalies (score > 1)", s.kpi.anomalies]);
+    }
+    $("kpis").innerHTML = kpiHtml(kpiItems);
 
-    // live feed
-    const vClass = { Genuine: "v-genuine", Malicious: "v-malicious", Suspicious: "v-suspicious" };
-    const vIcon = { Genuine: "✅ ", Malicious: "🚨 ", Suspicious: "⚠️ " };
-    $("feed").innerHTML = "<tr><th>ID</th><th>Capture time</th><th>Source</th><th>Destination</th><th>Verdict</th><th>Predicted</th><th>Confidence</th></tr>" +
-        s.feed.map((r) => `<tr><td>${esc(r.event_id)}</td><td>${esc(r.capture_time)}</td><td>${esc(r.src_ip)}</td>
-      <td>${esc(r.dst_ip)}:${esc(r.dst_port)}</td><td class="${vClass[r.verdict] || ""}">${vIcon[r.verdict] || ""}${esc(r.verdict)}</td>
-      <td>${esc(r.predicted)}</td><td><span class="bar"><i style="width:${Math.round(r.confidence * 100)}%"></i></span>${num(r.confidence)}</td></tr>`).join("");
+    // live feed table
+    $("feed").innerHTML = "<tr><th>ID</th><th>Time</th><th>Verdict</th><th>Family</th><th>Conf.</th><th>Source → Dest</th></tr>" +
+        s.feed.map((r) => `<tr><td>${esc(r.event_id)}</td><td>${esc(r.capture_time)}</td>` +
+            `<td class="verdict-${esc(r.verdict)}">${esc(r.verdict)}</td><td>${esc(r.predicted)}</td>` +
+            `<td>${num(r.confidence)}</td><td>${esc(r.src_ip)} → ${esc(r.dst_ip)}:${esc(r.dst_port)}</td></tr>`).join("");
 
     if (chartsOk) updateCharts(s);
 
-    $("topIps").innerHTML = s.top_ips.length
-        ? s.top_ips.map(([ip, n]) => `<li>${esc(ip)} <span class="meta">(${n})</span></li>`).join("")
-        : '<li class="meta">No attacks detected yet</li>';
+    // top IPs
+    $("topIps").innerHTML = s.top_ips.map(([ip, n]) =>
+        `<li><span class="mono">${esc(ip)}</span><span class="meta">${n.toLocaleString()} attacks</span></li>`).join("");
 
     renderForecast(s.forecast);
 
     // alert queue
+    const isViewer = currentUser && currentUser.role === "viewer";
+    const triageDisabled = isViewer ? 'disabled title="Viewer role cannot triage alerts (Analyst required)"' : '';
     $("queue").innerHTML = "<tr><th>ID</th><th>Severity</th><th>Status</th><th>Predicted</th><th>Conf.</th><th>Attack score</th><th>Anomaly</th><th>Flow</th><th>Actions</th></tr>" +
         s.queue.map((r) => `<tr data-row="${esc(r.event_id)}" title="${esc(r.top3)}" style="cursor:pointer">
       <td>${esc(r.event_id)}</td><td class="sev-${esc(r.severity)}">${esc(r.severity)}</td>
       <td>${esc(r.status)}</td><td>${esc(r.predicted)}</td><td>${num(r.confidence)}</td><td>${num(r.attack_score)}</td>
       <td>${num(r.anomaly_score)}</td><td>${esc(r.src_ip)} → ${esc(r.dst_ip)}:${esc(r.dst_port)}</td>
-      <td><button data-id="${esc(r.event_id)}" data-status="Acknowledged">Ack</button>
-          <button data-id="${esc(r.event_id)}" data-status="False positive">False pos.</button>
-          <button data-id="${esc(r.event_id)}" data-status="Escalated">Escalate</button></td></tr>`).join("");
+      <td><button data-id="${esc(r.event_id)}" data-status="Acknowledged" ${triageDisabled}>Ack</button>
+          <button data-id="${esc(r.event_id)}" data-status="False positive" ${triageDisabled}>False pos.</button>
+          <button data-id="${esc(r.event_id)}" data-status="Escalated" ${triageDisabled}>Escalate</button></td></tr>`).join("");
 }
 
-function renderForecast(f) {
-    const warn = $("warning");
-    if (!f || !f.ready) {
-        $("fcNote").textContent = `Collecting history… ${f ? f.buckets : 0}/8 ten-second buckets ` +
-            "(about 80 s of live traffic needed, or use “Fast-forward 2 min” in replay mode).";
+function renderForecast(fc) {
+    if (!fc || !fc.ready) {
+        $("fcNote").textContent = `Accumulating history… (${fc ? fc.buckets : 0} of 8 buckets)`;
         $("fcKpis").innerHTML = "";
         $("fcFamily").textContent = "";
-        warn.classList.add("hidden");
-        if (chartsOk) { forecastChart.data.labels = []; forecastChart.data.datasets = []; forecastChart.update(); }
+        const w = $("warning");
+        w.classList.add("hidden");
         return;
     }
-    $("fcNote").textContent = "";
-    $("fcKpis").innerHTML = kpiHtml([
-        ["Risk level", f.level], ["Trend", f.trend], ["Attack share now", pct(f.now)],
-        ["Forecast (next 60 s)", pct(f.next)],
-        ["Skill vs naive", f.skill === null || f.skill === undefined ? "n/a" : (f.skill >= 0 ? "+" : "") + Math.round(f.skill * 100) + "%"],
-    ]);
-    const alarm = (f.level === "High" || f.level === "Severe") && f.trend !== "Falling";
-    warn.classList.toggle("hidden", !alarm);
-    if (alarm) {
-        warn.textContent = `Early warning (${f.level}, ${f.trend.toLowerCase()}): attack share is ${pct(f.now)} now and forecast at ${pct(f.next30)} over the next 30 s.` +
-            (f.top_family ? ` Dominant family: ${f.top_family}.` : "");
+    $("fcNote").textContent = `Risk level: ${fc.level} (trend: ${fc.trend})` +
+        (fc.skill !== null ? ` · Forecast skill vs naïve: ${pct(fc.skill, 0)}` : "");
+
+    const w = $("warning");
+    if (fc.level === "High" || fc.trend === "Rising") {
+        w.textContent = `Forecast warning: attack share is ${fc.level.toLowerCase()} and ${fc.trend.toLowerCase()}. ` +
+            `Expected share over the next 60 s: ${pct(fc.next, 1)}.`;
+        w.classList.remove("hidden");
+    } else {
+        w.classList.add("hidden");
     }
+
+    $("fcKpis").innerHTML = kpiHtml([
+        ["Current share (~30 s)", pct(fc.now, 1)],
+        ["Next 30 s forecast", pct(fc.next30, 1)],
+        ["Next 60 s avg", pct(fc.next, 1)],
+        ["Risk level", fc.level],
+    ]);
+
     if (chartsOk) {
-        const n = f.observed.length, m = f.forecast.length;
-        forecastChart.data.labels = f.labels;
+        forecastChart.data.labels = fc.labels;
         forecastChart.data.datasets = [
-            { label: "observed", data: [...f.observed, ...Array(m).fill(null)], borderColor: "#2a7de1", pointRadius: 0, tension: 0.2 },
             {
-                label: "forecast", data: [...Array(n - 1).fill(null), f.observed[n - 1], ...f.forecast],
-                borderColor: "#d64545", borderDash: [6, 4], pointRadius: 0, tension: 0.2
+                label: "Observed attack share",
+                data: fc.observed.concat(Array(fc.forecast.length).fill(null)),
+                borderColor: "#2a7de1", backgroundColor: "rgba(42, 125, 225, 0.15)",
+                fill: false, tension: 0.2
             },
+            {
+                label: "Holt forecast",
+                data: Array(fc.observed.length - 1).fill(null).concat([fc.observed[fc.observed.length - 1]]).concat(fc.forecast),
+                borderColor: "#d64545", backgroundColor: "rgba(214, 69, 69, 0.15)",
+                borderDash: [5, 5], fill: false, tension: 0.2
+            }
         ];
         forecastChart.update();
     }
-    $("fcFamily").textContent = f.top_family
-        ? `Likely next attack family: ${f.top_family} (${pct(f.top_family_share)} of attacks in the last 60 s). This is a persistence estimate, not a trained model.`
+
+    $("fcFamily").textContent = fc.top_family
+        ? `Likely dominant attack family: ${fc.top_family} (${pct(fc.top_family_share, 0)} of recent attacks)`
         : "Likely next attack family: none in the last 60 s.";
 }
 
@@ -304,80 +479,91 @@ function renderForecast(f) {
 let busy = false, synced = false;
 
 function syncBoxes() {
-    $("watchBox").classList.toggle("hidden", $("source").value !== "watch");
-    $("uploadBox").classList.toggle("hidden", $("source").value !== "upload");
+    if ($("watchBox")) $("watchBox").classList.toggle("hidden", $("source").value !== "watch");
+    if ($("uploadBox")) $("uploadBox").classList.toggle("hidden", $("source").value !== "upload");
 }
 
 async function refresh() {
-    if (busy || document.hidden) return;           // no polling while the tab is in the background
+    if (busy || document.hidden) return;           // no polling while tab is hidden
     busy = true;
     try {
         const sev = [...document.querySelectorAll(".sev:checked")].map((c) => c.value).join(",");
         const fams = [...document.querySelectorAll(".fam:checked")].map((c) => c.value).join(",") || "__none__";
         const s = await api(`/api/state?min_conf=${$("minConf").value}&sev=${encodeURIComponent(sev)}&fams=${encodeURIComponent(fams)}`);
-        if (!synced) {                                     // copy the server's settings into the controls once
+        if (!synced) {                             // copy server's settings into controls once
             $("live").checked = s.live;
-            $("rate").value = s.rate;
-            $("source").value = s.source;
-            $("watchPath").value = s.watch_path;
+            if ($("rate")) $("rate").value = s.rate;
+            if ($("source")) $("source").value = s.source;
+            if ($("watchPath")) $("watchPath").value = s.watch_path;
             syncBoxes();
             synced = true;
         }
         render(s);
     } catch (e) {
-        $("error").textContent = "Cannot reach the server: " + e.message;
-        $("error").classList.remove("hidden");
+        if (e.message !== "401 Unauthorized") {
+            $("error").textContent = "Cannot reach server: " + e.message;
+            $("error").classList.remove("hidden");
+        }
     } finally { busy = false; }
 }
 
 // ---------- controls ----------
-$("live").onchange = () => api("/api/control", { live: $("live").checked }).then(refresh);
-$("rate").onchange = () => api("/api/control", { rate: parseInt($("rate").value, 10) || 20 });
-$("source").onchange = () => {
+if ($("live")) $("live").onchange = () => api("/api/control", { live: $("live").checked }).then(refresh);
+if ($("rate")) $("rate").onchange = () => api("/api/control", { rate: parseInt($("rate").value, 10) || 20 });
+if ($("source")) $("source").onchange = () => {
     syncBoxes();
     api("/api/control", { source: $("source").value }).then(refresh);
 };
-$("watchPath").onchange = () => api("/api/control", { watch_path: $("watchPath").value })
+if ($("watchPath")) $("watchPath").onchange = () => api("/api/control", { watch_path: $("watchPath").value })
     .then((r) => { if (!r.ok) alert(r.error); });
-$("jump").onclick = () => api("/api/jump", { day: $("day").value })
+if ($("jump")) $("jump").onclick = () => api("/api/jump", { day: $("day").value })
     .then((r) => { if (!r.ok) alert(r.error); });
-$("clear").onclick = () => api("/api/clear", {}).then(refresh);
+if ($("clear")) $("clear").onclick = () => api("/api/clear", {}).then(refresh);
+
 let confTimer = null;
-$("minConf").oninput = () => {
-    $("minConfVal").textContent = Number($("minConf").value).toFixed(2);
-    clearTimeout(confTimer);                       // wait for the slider to settle instead of one request per pixel
-    confTimer = setTimeout(refresh, 200);
-};
+if ($("minConf")) {
+    $("minConf").oninput = () => {
+        $("minConfVal").textContent = Number($("minConf").value).toFixed(2);
+        clearTimeout(confTimer);
+        confTimer = setTimeout(refresh, 200);
+    };
+}
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 document.querySelectorAll(".sev").forEach((c) => (c.onchange = refresh));
 
-$("famBox").innerHTML = FAMILIES.map((f) =>
-    `<label class="row"><input type="checkbox" class="fam" value="${esc(f)}" checked> ${esc(f)}</label>`).join("");
-$("famBox").addEventListener("change", refresh);
+if ($("famBox")) {
+    $("famBox").innerHTML = FAMILIES.map((f) =>
+        `<label class="row"><input type="checkbox" class="fam" value="${esc(f)}" checked> ${esc(f)}</label>`).join("");
+    $("famBox").addEventListener("change", refresh);
+}
 
-$("ff").onclick = async () => {
-    $("ff").disabled = true;
-    try {
-        const r = await api("/api/fastforward", { ticks: 60 });
-        if (!r.ok) alert(r.error);
-    } catch (e) { alert("Fast-forward failed: " + e.message); }
-    finally { $("ff").disabled = false; refresh(); }
-};
+if ($("ff")) {
+    $("ff").onclick = async () => {
+        $("ff").disabled = true;
+        try {
+            const r = await api("/api/fastforward", { ticks: 60 });
+            if (!r.ok) alert(r.error);
+        } catch (e) { alert("Fast-forward failed: " + e.message); }
+        finally { $("ff").disabled = false; refresh(); }
+    };
+}
 
 // ---------- upload ----------
-$("uploadFile").onchange = async () => {
-    const f = $("uploadFile").files[0];
-    if (!f) return;
-    $("uploadMsg").textContent = "Uploading…";
-    const fd = new FormData();
-    fd.append("file", f);
-    try {
-        const res = await fetch("/api/upload", { method: "POST", body: fd });
-        const r = await res.json();
-        $("uploadMsg").textContent = r.ok ? `${r.queued.toLocaleString()} flows queued` : (r.error || "Upload failed");
-    } catch (e) { $("uploadMsg").textContent = "Upload failed: " + e.message; }
-    refresh();
-};
+if ($("uploadFile")) {
+    $("uploadFile").onchange = async () => {
+        const f = $("uploadFile").files[0];
+        if (!f) return;
+        $("uploadMsg").textContent = "Uploading…";
+        const fd = new FormData();
+        fd.append("file", f);
+        try {
+            const res = await fetch("/api/upload", { method: "POST", body: fd });
+            const r = await res.json();
+            $("uploadMsg").textContent = r.ok ? `${r.queued.toLocaleString()} flows queued` : (r.error || "Upload failed");
+        } catch (e) { $("uploadMsg").textContent = "Upload failed: " + e.message; }
+        refresh();
+    };
+}
 
 // ---------- investigate drawer ----------
 async function openDrawer(id) {
@@ -385,6 +571,9 @@ async function openDrawer(id) {
     try { r = await api("/api/alert/" + id); } catch (e) { return; }
     if (!r.found) return;
     const top3 = String(r.top3 || "").split(" | ").map((t) => `<li>${esc(t)}</li>`).join("");
+    const isViewer = currentUser && currentUser.role === "viewer";
+    const triageDisabled = isViewer ? 'disabled title="Viewer role cannot triage alerts (Analyst required)"' : '';
+
     $("drawerBody").innerHTML = `
     <h3>Alert #${esc(r.event_id)} · <span class="sev-${esc(r.severity)}">${esc(r.severity)}</span></h3>
     <dl>
@@ -400,31 +589,36 @@ async function openDrawer(id) {
       <dt>Ground truth</dt><dd>${esc(r.actual)} <span class="meta">(replay only)</span></dd>
     </dl>
     <h3>Top-3 classes</h3><ul>${top3}</ul>
-    <button data-id="${esc(r.event_id)}" data-status="Acknowledged">Acknowledge</button>
-    <button data-id="${esc(r.event_id)}" data-status="False positive">False positive</button>
-    <button data-id="${esc(r.event_id)}" data-status="Escalated">Escalate</button>`;
+    <button data-id="${esc(r.event_id)}" data-status="Acknowledged" ${triageDisabled}>Acknowledge</button>
+    <button data-id="${esc(r.event_id)}" data-status="False positive" ${triageDisabled}>False positive</button>
+    <button data-id="${esc(r.event_id)}" data-status="Escalated" ${triageDisabled}>Escalate</button>`;
     $("drawer").classList.remove("hidden");
 }
-$("drawerClose").onclick = () => $("drawer").classList.add("hidden");
-$("drawer").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-id]");
-    if (b) {
-        api("/api/status", { event_id: Number(b.dataset.id), status: b.dataset.status })
-            .then(() => { refresh(); openDrawer(Number(b.dataset.id)); });
-    }
-});
-$("queue").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-id]");
-    if (b) {
-        api("/api/status", { event_id: Number(b.dataset.id), status: b.dataset.status }).then(refresh);
-        return;
-    }
-    const row = e.target.closest("tr[data-row]");
-    if (row) openDrawer(Number(row.dataset.row));
-});
+
+if ($("drawerClose")) $("drawerClose").onclick = () => $("drawer").classList.add("hidden");
+if ($("drawer")) {
+    $("drawer").addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-id]");
+        if (b && !b.disabled) {
+            api("/api/status", { event_id: Number(b.dataset.id), status: b.dataset.status })
+                .then(() => { refresh(); openDrawer(Number(b.dataset.id)); });
+        }
+    });
+}
+if ($("queue")) {
+    $("queue").addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-id]");
+        if (b && !b.disabled) {
+            api("/api/status", { event_id: Number(b.dataset.id), status: b.dataset.status }).then(refresh);
+            return;
+        }
+        const row = e.target.closest("tr[data-row]");
+        if (row) openDrawer(Number(row.dataset.row));
+    });
+}
 
 // ---------- model health ----------
-let healthOpen = false;
+let healthOpen = true;
 async function loadHealth() {
     try {
         const h = await api("/api/health");
@@ -452,21 +646,41 @@ async function loadHealth() {
         }
     } catch (e) { console.warn("health failed:", e); }
 }
-$("healthBox").addEventListener("toggle", () => {
-    healthOpen = $("healthBox").open;
-    if (healthOpen) loadHealth();
-});
+
+if ($("healthBox")) {
+    $("healthBox").addEventListener("toggle", () => {
+        healthOpen = $("healthBox").open;
+        if (healthOpen) loadHealth();
+    });
+}
 setInterval(() => { if (healthOpen) loadHealth(); }, 6000);
 
-// ---------- start ----------
+// ---------- logout handler ----------
+if ($("logoutBtn")) {
+    $("logoutBtn").onclick = async () => {
+        try {
+            await fetch("/api/auth/logout", { method: "POST" });
+        } finally {
+            window.location.href = "/login.html";
+        }
+    };
+}
+
+// ---------- start application ----------
 (async function start() {
     initTheme();
+    const ok = await checkAuth();
+    if (!ok) return;
+
+    initRouting();
+    initUserManagement();
     try { initCharts(); } catch (e) { console.warn("Charts unavailable:", e); }
     try {
         const days = await api("/api/days");
-        $("day").innerHTML = days.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
-    } catch (e) { /* the first refresh shows the error */ }
+        if ($("day")) $("day").innerHTML = days.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
+    } catch (e) { /* refresh displays error */ }
     initWebSocket();
     refresh();
+    loadHealth();
     setInterval(refresh, 2000);
 })();

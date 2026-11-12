@@ -6,7 +6,8 @@ import time
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from backend.auth import get_current_user, require_role
 from pydantic import BaseModel
 
 from backend.common import SEV_ORDER, STATUSES, family_of
@@ -250,7 +251,7 @@ def _incident_payload(df):
 
 
 @router.get("/api/incidents")
-def incidents():
+def incidents(user: dict = Depends(get_current_user)):
     S = ctx["S"]
     ver = S["version"]                      # read the version BEFORE the table, so a stale cache can't outlive a change
     df = S["alerts"]
@@ -268,7 +269,7 @@ class IncidentStatus(BaseModel):
 
 
 @router.post("/api/incident/status")
-def incident_status(b: IncidentStatus):
+def incident_status(b: IncidentStatus, analyst: dict = Depends(require_role(['admin', 'analyst']))):
     if b.status not in STATUSES:
         return {"ok": False, "error": f"Unknown status: {b.status}"}
     S = ctx["S"]
@@ -430,7 +431,7 @@ class ExplainReq(BaseModel):
 
 
 @router.post("/api/explain/run")
-def explain_run(r: ExplainReq):
+def explain_run(r: ExplainReq, analyst: dict = Depends(require_role(['admin', 'analyst']))):
     method = r.method if r.method in ("kernel", "tree") else "kernel"
     opt = {"method": method,
            "n": max(10, min(r.n, 100 if method == "kernel" else 300)),
@@ -446,12 +447,12 @@ def explain_run(r: ExplainReq):
 
 
 @router.post("/api/explain/cancel")
-def explain_cancel():
+def explain_cancel(analyst: dict = Depends(require_role(['admin', 'analyst']))):
     _state["cancel"] = True
     return {"ok": True}
 
 
 @router.get("/api/explain")
-def explain_get():
+def explain_get(user: dict = Depends(get_current_user)):
     return {"builtin": _builtin(), "status": _state["status"], "error": _state["error"],
             "seconds": _state["seconds"], "progress": _state["progress"], "shap": _state["result"]}

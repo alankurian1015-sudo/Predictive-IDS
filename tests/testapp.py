@@ -86,7 +86,9 @@ def srv(monkeypatch):
     server.S["error"] = ""
     server.S["fault"] = ""
     server.extras.ctx.update(S=server.S, LOCK=server.LOCK, det=server.det, stream=server.stream)
-    return server, TestClient(server.app)          # no `with`: the background loop stays off, tests call step() themselves
+    token = server.auth.create_access_token({"sub": "admin", "role": "admin", "name": "Admin"})
+    client = TestClient(server.app, cookies={"pids_token": token})
+    return server, client          # no `with`: the background loop stays off, tests call step() themselves
 
 
 # ---------------- unit tests ----------------

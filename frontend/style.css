@@ -779,3 +779,194 @@ h4 select {
     background: rgba(42, 125, 225, 0.16);
     border-color: var(--accent);
 }
+
+
+/* ==========================================================================
+   Navigation Bar & Multi-View Tabs
+   ========================================================================== */
+.nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 0 16px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+    gap: 16px;
+}
+
+.nav-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.nav-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.nav-tab:hover {
+    color: var(--text);
+    background: var(--hover);
+}
+
+.nav-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: transparent;
+}
+
+.nav-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--bad);
+    color: #ffffff;
+    line-height: 1;
+}
+
+/* User Profile Badge & Header Controls */
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.user-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--hover);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.role-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.role-badge.admin {
+    background: rgba(214, 69, 69, 0.15);
+    color: var(--bad);
+    border: 1px solid rgba(214, 69, 69, 0.3);
+}
+
+.role-badge.analyst {
+    background: rgba(42, 125, 225, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(42, 125, 225, 0.3);
+}
+
+.role-badge.viewer {
+    background: rgba(46, 158, 107, 0.15);
+    color: var(--ok);
+    border: 1px solid rgba(46, 158, 107, 0.3);
+}
+
+.logout-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.logout-btn:hover {
+    background: rgba(214, 69, 69, 0.1);
+    color: var(--bad);
+    border-color: var(--bad);
+}
+
+/* Page Views */
+.page-view {
+    display: block;
+    animation: fadeIn 0.15s ease-in;
+}
+
+.page-view.hidden {
+    display: none !important;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* User Management Styles */
+.user-mgmt-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 900px) {
+    .user-mgmt-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.user-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.user-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.user-form input, .user-form select {
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    background: var(--input-bg);
+    color: var(--text);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.btn-danger-outline {
+    background: transparent;
+    border: 1px solid var(--bad);
+    color: var(--bad);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.btn-danger-outline:hover {
+    background: var(--bad);
+    color: #fff;
+}

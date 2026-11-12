@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login · Predictive Intrusion Detection System (PIDS)</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body.login-page {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            background: var(--bg);
+            box-sizing: border-box;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 440px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+            padding: 32px;
+            box-sizing: border-box;
+        }
+
+        .login-brand {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .login-brand .logo-icon {
+            font-size: 40px;
+            margin-bottom: 8px;
+            display: inline-block;
+        }
+
+        .login-brand h1 {
+            font-size: 20px;
+            margin: 0 0 6px 0;
+            color: var(--text);
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .login-brand p {
+            margin: 0;
+            font-size: 13px;
+            color: var(--meta);
+        }
+
+        .login-form label {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .login-form input[type="text"],
+        .login-form input[type="password"] {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .login-form input:focus {
+            border-color: #2a7de1;
+            box-shadow: 0 0 0 3px rgba(42, 125, 225, 0.2);
+        }
+
+        .login-submit {
+            width: 100%;
+            padding: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            background: #2a7de1;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+
+        .login-submit:hover {
+            background: #1f68c2;
+        }
+
+        .login-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .demo-roles {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px dashed var(--border);
+        }
+
+        .demo-roles p {
+            margin: 0 0 10px 0;
+            font-size: 12px;
+            color: var(--meta);
+            text-align: center;
+        }
+
+        .demo-btns {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .demo-pill {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 5px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            color: var(--text);
+            transition: all 0.15s;
+        }
+
+        .demo-pill:hover {
+            border-color: #2a7de1;
+            color: #2a7de1;
+        }
+
+        .login-alert {
+            margin-bottom: 16px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .login-alert.error {
+            display: block;
+            background: rgba(214, 69, 69, 0.15);
+            border: 1px solid rgba(214, 69, 69, 0.4);
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+
+<body class="login-page">
+    <div class="login-card">
+        <div class="login-brand">
+            <span class="logo-icon">🛡️</span>
+            <h1>PIDS · SOC Portal</h1>
+            <p>Predictive Intrusion Detection & Triage</p>
+        </div>
+
+        <div id="loginAlert" class="login-alert"></div>
+
+        <form id="loginForm" class="login-form">
+            <label>
+                Username
+                <input type="text" id="username" autocomplete="username" required autofocus placeholder="Enter your username">
+            </label>
+            <label>
+                Password
+                <input type="password" id="password" autocomplete="current-password" required placeholder="••••••••">
+            </label>
+            <button type="submit" id="submitBtn" class="login-submit">Sign In</button>
+        </form>
+
+        <div class="demo-roles">
+            <p>Quick Test Pre-fill (SOC Roles):</p>
+            <div class="demo-btns">
+                <button type="button" class="demo-pill" onclick="fillCreds('admin', 'admin123')">🛡️ Admin</button>
+                <button type="button" class="demo-pill" onclick="fillCreds('analyst', 'analyst123')">🔍 Analyst</button>
+                <button type="button" class="demo-pill" onclick="fillCreds('viewer', 'viewer123')">👁️ Viewer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function fillCreds(u, p) {
+            document.getElementById("username").value = u;
+            document.getElementById("password").value = p;
+            document.getElementById("loginAlert").className = "login-alert";
+        }
+
+        // Apply saved theme
+        const savedTheme = localStorage.getItem("pids-theme") || 
+            (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", savedTheme);
+
+        // Check if already authenticated
+        fetch("/api/auth/me")
+            .then(res => {
+                if (res.ok) window.location.href = "/";
+            })
+            .catch(() => {});
+
+        document.getElementById("loginForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById("submitBtn");
+            const alert = document.getElementById("loginAlert");
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value;
+
+            btn.disabled = true;
+            btn.textContent = "Verifying…";
+            alert.className = "login-alert";
+
+            try {
+                const res = await fetch("/api/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    alert.textContent = data.detail || "Authentication failed.";
+                    alert.className = "login-alert error";
+                    btn.disabled = false;
+                    btn.textContent = "Sign In";
+                    return;
+                }
+
+                // Success
+                window.location.href = "/";
+            } catch (err) {
+                alert.textContent = "Network error: Unable to contact authentication server.";
+                alert.className = "login-alert error";
+                btn.disabled = false;
+                btn.textContent = "Sign In";
+            }
+        });
+    </script>
+</body>
+
+</html>

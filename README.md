@@ -127,17 +127,45 @@ The application includes native file-processing pipelines decoupled for both the
    - **Random Forest**: Exact 65 features in their original training order, evaluated without scaling.
    - **Autoencoder**: Exact 65 features scaled via `ae_preprocessor.joblib` (`StandardScaler`), evaluated against the calibrated reconstruction MSE threshold $2.106967 \times 10^{13}$.
 
+## Authentication & Default Accounts
+
+The dashboard is secured with role-based access control (RBAC). Seed default accounts using `python scripts/seed_users.py`.
+
+| Account | Username | Default Password | Role | Permissions |
+| :--- | :--- | :--- | :--- | :--- |
+| **Admin** | `admin` | `admin123` | `admin` | Full control: Ingestion feeds, PCAP uploads, simulation rates, user management, and triage. |
+| **Analyst** | `analyst` | `analyst123` | `analyst` | Threat investigation: Live Situation Room, Incident Triage, SHAP calculations, and CSV export. |
+| **Auditor** | `viewer` | `viewer123` | `viewer` | Read-only access: Situation Room metrics, attack forecasts, and model health. (Triage actions disabled). |
+
+## Multi-Page SOC Portal Structure
+
+The dashboard features tabbed view routing with uninterrupted background WebSocket streaming:
+1. **📊 Live Situation Room (`#/live`)**: Real-time traffic KPIs, latest flows table, traffic & port charts, and 60-second Holt forecast.
+2. **🚨 Incidents & Alert Triage (`#/incidents`)**: MITRE ATT&CK predictive kill-chain matrix, grouped incidents, and actionable alert queue with investigation drawer.
+3. **🧠 Model Health & XAI (`#/models`)**: Precision/recall breakdown, confusion matrix, calibration curve, and interactive SHAP explainability.
+4. **⚙️ Ingestion & Replay (`#/ingestion`)** *(Admin only)*: Traffic source selection, replay jump, simulation speed, and PCAP/CSV upload.
+5. **👥 User Management (`#/users`)** *(Admin only)*: Create and manage SOC accounts and assign roles.
+
 ## API
 
-| Endpoint | Purpose |
-|---|---|
-| GET /api/state | Everything the page renders |
-| GET /api/incidents, POST /api/incident/status | Incident list and triage |
-| GET /api/explain, POST /api/explain/run | Feature importance, SHAP job |
-| GET /api/health | Precision/recall, confusion matrix, calibration |
-| GET /api/alert/{id}, POST /api/status | One alert, alert triage |
-| POST /api/control, /api/jump, /api/clear, /api/fastforward | Playback and state controls |
-| POST /api/upload | Upload CSV or raw PCAP/PCAPNG capture (auto-detected) |
+| Endpoint | Method | Role Required | Purpose |
+|---|---|---|---|
+| `/api/auth/login` | POST | Public | Authenticates credentials and issues HttpOnly JWT cookie |
+| `/api/auth/logout` | POST | Public | Clears session cookie |
+| `/api/auth/me` | GET | Any Authenticated | Retrieves current user session profile |
+| `/api/auth/users` | GET / POST | `admin` | List or register SOC user accounts |
+| `/api/auth/users/{id}` | DELETE | `admin` | Deactivates a user account |
+| `/api/state` | GET | Any Authenticated | Everything the page renders |
+| `/api/incidents` | GET | Any Authenticated | Grouped incidents and MITRE kill-chain data |
+| `/api/incident/status` | POST | `admin`, `analyst` | Triage whole incident |
+| `/api/status` | POST | `admin`, `analyst` | Triage alert (Acknowledge, Escalate, False positive) |
+| `/api/explain` | GET | Any Authenticated | Feature importance and SHAP status |
+| `/api/explain/run` | POST | `admin`, `analyst` | Launch SHAP background calculation |
+| `/api/health` | GET | Any Authenticated | Precision/recall, confusion matrix, calibration |
+| `/api/alert/{id}` | GET | Any Authenticated | Alert investigation details |
+| `/api/control`, `/api/jump`, `/api/clear`, `/api/fastforward` | POST | `admin` | Ingestion and playback controls |
+| `/api/upload` | POST | `admin` | Upload CSV or raw PCAP/PCAPNG capture |
+| `/ws` | WebSocket | Any Authenticated | Real-time live feed push stream (authenticated on handshake) |
 | GET /api/pcap/info | CICFlowMeter environment and CLI compatibility status |
 | GET /api/export | Alerts as CSV |
 
