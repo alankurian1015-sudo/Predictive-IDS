@@ -4,223 +4,150 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SOC Gateway · Predictive Intrusion Detection System</title>
+    <title>Enterprise Access Gateway · Predictive IDS</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --login-bg: #070a12;
-            --login-card: rgba(14, 21, 37, 0.75);
-            --login-border: rgba(148, 163, 184, 0.14);
-            --login-accent: #38bdf8;
-            --login-accent-glow: rgba(56, 189, 248, 0.35);
+            --bg-canvas: #070a12;
+            --bg-card: #0d1424;
+            --bg-elevated: #131c31;
+            --bg-hover: #192540;
+            --border-subtle: rgba(255, 255, 255, 0.07);
+            --border-base: rgba(255, 255, 255, 0.12);
+            --border-focus: #3b82f6;
+
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --status-critical: #ef4444;
+            --status-critical-bg: rgba(239, 68, 68, 0.12);
+            --status-critical-border: rgba(239, 68, 68, 0.3);
+
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
         }
 
-        body.login-page {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 24px;
-            background-color: var(--login-bg);
-            background-image: 
-                radial-gradient(circle at 50% 15%, rgba(56, 189, 248, 0.15) 0%, transparent 45%),
-                radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
-                radial-gradient(circle at 15% 85%, rgba(16, 185, 129, 0.06) 0%, transparent 40%);
-            background-attachment: fixed;
-            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-            color: #f8fafc;
-            position: relative;
-            overflow: hidden;
+        *, *::before, *::after {
             box-sizing: border-box;
         }
 
-        /* Cyber grid matrix overlay */
-        body.login-page::before {
-            content: "";
-            position: fixed;
-            inset: 0;
-            background-image: 
-                linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-            background-size: 36px 36px;
-            mask-image: radial-gradient(circle at 50% 45%, black 30%, transparent 75%);
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        .login-container {
-            width: 100%;
-            max-width: 440px;
-            position: relative;
-            z-index: 1;
-            animation: cardEntrance 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        @keyframes cardEntrance {
-            from { opacity: 0; transform: translateY(16px) scale(0.98); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-
-        .login-card {
-            background: var(--login-card);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--login-border);
-            border-top: 1px solid rgba(56, 189, 248, 0.4);
-            border-radius: 16px;
-            box-shadow: 
-                0 25px 50px -12px rgba(0, 0, 0, 0.7),
-                0 0 0 1px rgba(255, 255, 255, 0.05),
-                0 0 40px -10px rgba(56, 189, 248, 0.15);
-            padding: 36px 32px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        /* Ambient scanline accent on top */
-        .login-card::after {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 20%;
-            right: 20%;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, #38bdf8, transparent);
-            box-shadow: 0 0 12px #38bdf8;
-        }
-
-        .brand-header {
-            text-align: center;
-            margin-bottom: 28px;
-        }
-
-        .logo-glyph {
-            width: 56px;
-            height: 56px;
-            margin: 0 auto 16px;
-            border-radius: 14px;
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(30, 41, 59, 0.6));
-            border: 1px solid rgba(56, 189, 248, 0.3);
+        body.auth-viewport {
+            min-height: 100vh;
+            margin: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
-            position: relative;
+            background: var(--bg-canvas);
+            background-image: 
+                radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.18) 0%, transparent 60%),
+                radial-gradient(circle at 10% 90%, rgba(30, 58, 138, 0.1) 0%, transparent 40%);
+            padding: 24px;
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
         }
 
-        .logo-glyph svg {
-            width: 28px;
-            height: 28px;
-            fill: none;
-            stroke: #38bdf8;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
+        .auth-container {
+            width: 100%;
+            max-width: 440px;
         }
 
-        .radar-pulse {
-            position: absolute;
-            inset: -4px;
-            border-radius: 18px;
-            border: 1px solid rgba(56, 189, 248, 0.4);
-            animation: pulseGlow 2.5s infinite cubic-bezier(0.4, 0, 0.6, 1);
-            pointer-events: none;
+        .auth-header {
+            margin-bottom: 24px;
+            text-align: center;
         }
 
-        @keyframes pulseGlow {
-            0%, 100% { opacity: 0.2; transform: scale(1); }
-            50% { opacity: 0.8; transform: scale(1.05); }
+        .auth-brand-mark {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(37, 99, 235, 0.05) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(37, 99, 235, 0.2);
         }
 
-        .security-badge {
+        .auth-brand-mark svg {
+            width: 22px;
+            height: 22px;
+            stroke: #3b82f6;
+        }
+
+        .auth-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0 0 6px;
+            letter-spacing: -0.02em;
+        }
+
+        .auth-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin: 0 0 12px;
+        }
+
+        .compliance-pill {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 3px 10px;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.25);
-            border-radius: 20px;
-            font-family: 'JetBrains Mono', monospace;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
             font-size: 10px;
             font-weight: 600;
-            color: #34d399;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-muted);
         }
 
-        .security-badge .dot {
-            width: 6px;
-            height: 6px;
+        .compliance-dot {
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
             background: #10b981;
-            box-shadow: 0 0 6px #10b981;
-            animation: blink 1.5s infinite;
         }
 
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+        .auth-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-base);
+            border-radius: 10px;
+            padding: 28px;
+            box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
         }
 
-        .brand-title {
-            font-size: 22px;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-            margin: 0 0 6px 0;
-            color: #f8fafc;
-            background: linear-gradient(180deg, #ffffff 30%, #94a3b8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .brand-subtitle {
-            margin: 0;
-            font-size: 13px;
-            color: #94a3b8;
-            font-weight: 500;
-        }
-
-        .login-alert {
+        .auth-alert {
             display: none;
             padding: 10px 14px;
-            border-radius: 8px;
+            border-radius: 6px;
             font-size: 12px;
-            font-weight: 500;
-            margin-bottom: 20px;
-            align-items: center;
-            gap: 8px;
-            animation: shake 0.3s ease-in-out;
+            margin-bottom: 18px;
+            background: var(--status-critical-bg);
+            border: 1px solid var(--status-critical-border);
+            color: var(--status-critical);
         }
 
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-4px); }
-            75% { transform: translateX(4px); }
-        }
-
-        .login-alert.error {
-            display: flex;
-            background: rgba(244, 63, 94, 0.12);
-            border: 1px solid rgba(244, 63, 94, 0.3);
-            color: #fb7185;
-        }
-
-        .input-group {
+        .field-group {
             margin-bottom: 18px;
         }
 
-        .input-group label {
-            display: block;
+        .field-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             font-size: 12px;
-            font-weight: 600;
-            color: #cbd5e1;
-            margin-bottom: 6px;
-            letter-spacing: 0.2px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 7px;
         }
 
         .input-wrapper {
@@ -231,233 +158,268 @@
 
         .input-icon {
             position: absolute;
-            left: 14px;
-            width: 16px;
-            height: 16px;
-            color: #64748b;
+            left: 12px;
+            width: 15px;
+            height: 15px;
+            stroke: var(--text-muted);
             pointer-events: none;
-            transition: color 0.2s;
         }
 
-        .input-control {
+        .field-input {
             width: 100%;
-            padding: 12px 14px 12px 42px;
-            background: rgba(15, 23, 42, 0.65);
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            border-radius: 10px;
-            color: #f8fafc;
-            font-size: 14px;
-            font-family: inherit;
+            padding: 10px 12px 10px 36px;
+            background: var(--bg-canvas);
+            border: 1px solid var(--border-base);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 13px;
             outline: none;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            box-sizing: border-box;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
 
-        .input-control:hover {
-            border-color: rgba(148, 163, 184, 0.3);
-            background: rgba(15, 23, 42, 0.85);
+        .field-input:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
         }
 
-        .input-control:focus {
-            border-color: #38bdf8;
-            background: rgba(15, 23, 42, 0.95);
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2), 0 0 20px rgba(56, 189, 248, 0.1);
-        }
-
-        .input-wrapper:focus-within .input-icon {
-            color: #38bdf8;
-        }
-
-        .btn-submit {
+        .btn-submit-auth {
             width: 100%;
-            padding: 13px;
-            margin-top: 8px;
-            border: none;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            padding: 11px;
+            background: var(--primary);
             color: #ffffff;
-            font-size: 14px;
+            border: none;
+            border-radius: 6px;
+            font-family: var(--font-sans);
+            font-size: 13px;
             font-weight: 600;
-            font-family: inherit;
             cursor: pointer;
-            box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: background 0.15s, transform 0.05s;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
+            margin-top: 6px;
         }
 
-        .btn-submit:hover {
-            background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
-            box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
-            transform: translateY(-1px);
+        .btn-submit-auth:hover {
+            background: var(--primary-hover);
         }
 
-        .btn-submit:active {
-            transform: translateY(0);
+        .btn-submit-auth:active {
+            transform: scale(0.99);
         }
 
-        .btn-submit:disabled {
+        .btn-submit-auth:disabled {
             opacity: 0.6;
             cursor: not-allowed;
-            transform: none;
         }
 
-        /* Demo Quick-Select Cards */
-        .demo-section {
-            margin-top: 28px;
+        /* Operator Profiles Section */
+        .operator-profiles-section {
+            margin-top: 24px;
             padding-top: 20px;
-            border-top: 1px solid rgba(148, 163, 184, 0.1);
+            border-top: 1px solid var(--border-subtle);
         }
 
-        .demo-title {
-            font-size: 11px;
-            font-weight: 700;
-            color: #64748b;
+        .operator-profiles-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .operator-profiles-title {
+            font-size: 10.5px;
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.6px;
-            text-align: center;
-            margin-bottom: 12px;
-        }
-
-        .demo-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-        }
-
-        .role-chip {
-            padding: 8px 6px;
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid rgba(148, 163, 184, 0.14);
-            border-radius: 8px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.2s;
-            color: #cbd5e1;
-            font-size: 11px;
+            letter-spacing: 0.06em;
             font-weight: 600;
+        }
+
+        .operator-profiles-grid {
             display: flex;
             flex-direction: column;
+            gap: 6px;
+        }
+
+        .profile-card-btn {
+            display: flex;
             align-items: center;
-            gap: 4px;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.12s;
         }
 
-        .role-chip:hover {
-            border-color: #38bdf8;
-            background: rgba(56, 189, 248, 0.08);
-            color: #38bdf8;
-            transform: translateY(-1px);
+        .profile-card-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--border-base);
+            color: var(--text-primary);
         }
 
-        .role-chip .role-icon {
-            font-size: 16px;
+        .profile-card-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
         }
 
-        .role-chip .role-perm {
-            font-size: 9px;
-            color: #64748b;
-            font-family: 'JetBrains Mono', monospace;
+        .profile-card-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
         }
 
-        .footer-note {
-            margin-top: 20px;
+        .profile-card-desc {
+            font-size: 10.5px;
+            color: var(--text-muted);
+        }
+
+        .profile-role-tag {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 3px;
+            text-transform: uppercase;
+        }
+
+        .profile-role-tag.admin {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .profile-role-tag.analyst {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .profile-role-tag.viewer {
+            background: rgba(100, 116, 139, 0.15);
+            color: #94a3b8;
+            border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+
+        .auth-footer {
+            margin-top: 24px;
             text-align: center;
             font-size: 11px;
-            color: #475569;
-            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
         }
     </style>
 </head>
 
-<body class="login-page">
-    <div class="login-container">
-        <div class="login-card">
-            <div class="brand-header">
-                <div class="logo-glyph">
-                    <span class="radar-pulse"></span>
-                    <svg viewBox="0 0 24 24">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                </div>
-                <div class="security-badge">
-                    <span class="dot"></span>
-                    Zero-Trust SOC Gateway
-                </div>
-                <h1 class="brand-title">Predictive IDS</h1>
-                <p class="brand-subtitle">Automated Cyber Telemetry & Incident Triage</p>
+<body class="auth-viewport">
+    <div class="auth-container">
+        <div class="auth-header">
+            <div class="auth-brand-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
             </div>
+            <h1 class="auth-title">Predictive IDS Enterprise</h1>
+            <p class="auth-desc">Autonomous Network Telemetry & Threat Classification</p>
+            <div class="compliance-pill">
+                <span class="compliance-dot"></span>
+                <span>FIPS 140-3 · SOC 2 TYPE II ENCLAVE</span>
+            </div>
+        </div>
 
-            <div id="loginAlert" class="login-alert">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <span id="alertMsg">Invalid credentials</span>
-            </div>
+        <div class="auth-card">
+            <div id="loginAlert" class="auth-alert"></div>
 
             <form id="loginForm">
-                <div class="input-group">
-                    <label for="username">Operator Identity</label>
+                <div class="field-group">
+                    <label class="field-label" for="username">
+                        <span>Operator Username</span>
+                    </label>
                     <div class="input-wrapper">
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
                         </svg>
-                        <input type="text" id="username" class="input-control" autocomplete="username" required autofocus placeholder="Operator username">
+                        <input type="text" id="username" class="field-input" autocomplete="username" required autofocus placeholder="name@soc.enterprise">
                     </div>
                 </div>
 
-                <div class="input-group">
-                    <label for="password">Access Secret</label>
+                <div class="field-group">
+                    <label class="field-label" for="password">
+                        <span>Access Key / Password</span>
+                    </label>
                     <div class="input-wrapper">
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
-                        <input type="password" id="password" class="input-control" autocomplete="current-password" required placeholder="••••••••••••">
+                        <input type="password" id="password" class="field-input" autocomplete="current-password" required placeholder="••••••••••••">
                     </div>
                 </div>
 
-                <button type="submit" id="submitBtn" class="btn-submit">
+                <button type="submit" id="submitBtn" class="btn-submit-auth">
                     <span>Authenticate Session</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                        <polyline points="12 5 19 12 12 19"/>
                     </svg>
                 </button>
             </form>
 
-            <div class="demo-section">
-                <div class="demo-title">Quick Switch SOC Profiles</div>
-                <div class="demo-grid">
-                    <button type="button" class="role-chip" onclick="fillCreds('admin', 'admin123')">
-                        <span class="role-icon">🛡️</span>
-                        <span>SecOps Lead</span>
-                        <span class="role-perm">FULL ACCESS</span>
+            <div class="operator-profiles-section">
+                <div class="operator-profiles-header">
+                    <span class="operator-profiles-title">Operator Profiles (Quick Fill)</span>
+                    <span style="font-size:10.5px; color:var(--text-muted); font-family:var(--font-mono);">Pre-configured</span>
+                </div>
+                <div class="operator-profiles-grid">
+                    <button type="button" class="profile-card-btn" onclick="fillCreds('admin', 'admin123')">
+                        <div class="profile-card-meta">
+                            <span class="profile-card-name">SecOps Lead</span>
+                            <span class="profile-card-desc">Full System Admin · Telemetry, Ingestion, IAM</span>
+                        </div>
+                        <span class="profile-role-tag admin">admin</span>
                     </button>
-                    <button type="button" class="role-chip" onclick="fillCreds('analyst', 'analyst123')">
-                        <span class="role-icon">🔍</span>
-                        <span>Threat Analyst</span>
-                        <span class="role-perm">TRIAGE & SHAP</span>
+                    <button type="button" class="profile-card-btn" onclick="fillCreds('analyst', 'analyst123')">
+                        <div class="profile-card-meta">
+                            <span class="profile-card-name">SOC Analyst</span>
+                            <span class="profile-card-desc">Threat Triage, Incident Mitigation, XAI</span>
+                        </div>
+                        <span class="profile-role-tag analyst">analyst</span>
                     </button>
-                    <button type="button" class="role-chip" onclick="fillCreds('viewer', 'viewer123')">
-                        <span class="role-icon">👁️</span>
-                        <span>SOC Auditor</span>
-                        <span class="role-perm">READ ONLY</span>
+                    <button type="button" class="profile-card-btn" onclick="fillCreds('viewer', 'viewer123')">
+                        <div class="profile-card-meta">
+                            <span class="profile-card-name">Compliance Auditor</span>
+                            <span class="profile-card-desc">Telemetry Observer · Read-Only Access</span>
+                        </div>
+                        <span class="profile-role-tag viewer">viewer</span>
                     </button>
                 </div>
             </div>
+        </div>
 
-            <div class="footer-note">
-                ENCRYPTED · SESSION COOKIE · MITRE ATT&CK ALIGNED
-            </div>
+        <div class="auth-footer">
+            PIDS v2.4.0 · STRICT RBAC ENFORCED · SESSION EXPIRY 8H
         </div>
     </div>
 
     <script>
         function fillCreds(u, p) {
-            document.getElementById("username").value = u;
-            document.getElementById("password").value = p;
-            document.getElementById("loginAlert").className = "login-alert";
+            const uField = document.getElementById("username");
+            const pField = document.getElementById("password");
+            uField.value = u;
+            pField.value = p;
+            const alert = document.getElementById("loginAlert");
+            alert.style.display = "none";
+            uField.focus();
         }
 
-        // Check if already authenticated
+        // Redirect if already authenticated
         fetch("/api/auth/me")
             .then(res => {
                 if (res.ok) window.location.href = "/";
@@ -468,13 +430,12 @@
             e.preventDefault();
             const btn = document.getElementById("submitBtn");
             const alert = document.getElementById("loginAlert");
-            const alertMsg = document.getElementById("alertMsg");
             const username = document.getElementById("username").value.trim();
             const password = document.getElementById("password").value;
 
             btn.disabled = true;
-            btn.innerHTML = `<span>Verifying Credentials…</span>`;
-            alert.className = "login-alert";
+            btn.innerHTML = `<span>Validating credentials…</span>`;
+            alert.style.display = "none";
 
             try {
                 const res = await fetch("/api/auth/login", {
@@ -485,19 +446,19 @@
 
                 const data = await res.json();
                 if (!res.ok) {
-                    alertMsg.textContent = data.detail || "Authentication rejected.";
-                    alert.className = "login-alert error";
+                    alert.textContent = data.detail || "Authentication failed: Invalid credentials.";
+                    alert.style.display = "block";
                     btn.disabled = false;
-                    btn.innerHTML = `<span>Authenticate Session</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+                    btn.innerHTML = `<span>Authenticate Session</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
                     return;
                 }
 
                 window.location.href = "/";
             } catch (err) {
-                alertMsg.textContent = "Network error: Connection to PIDS auth backend refused.";
-                alert.className = "login-alert error";
+                alert.textContent = "Unable to contact authentication gateway.";
+                alert.style.display = "block";
                 btn.disabled = false;
-                btn.innerHTML = `<span>Authenticate Session</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+                btn.innerHTML = `<span>Authenticate Session</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
             }
         });
     </script>

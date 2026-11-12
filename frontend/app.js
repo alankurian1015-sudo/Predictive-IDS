@@ -4,8 +4,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
 const num = (x, d = 2) => (x === null || x === undefined ? "n/a" : Number(x).toFixed(d));
 const pct = (x, d = 0) => (x === null || x === undefined ? "n/a" : (x * 100).toFixed(d) + "%");
 const COLORS = {
-    Benign: "#10b981", "DoS/DDoS": "#ef4444", Recon: "#f59e0b", "Brute force": "#8b5cf6",
-    "Web attack": "#0284c7", Botnet: "#ec4899", Infiltration: "#a855f7", Exploit: "#64748b", Other: "#94a3b8"
+    Benign: "#10b981", "DoS/DDoS": "#ef4444", Recon: "#f97316", "Brute force": "#8b5cf6",
+    "Web attack": "#2563eb", Botnet: "#ec4899", Infiltration: "#a855f7", Exploit: "#64748b", Other: "#71717a"
 };
 const FAMILIES = ["Benign", "DoS/DDoS", "Recon", "Brute force", "Web attack", "Botnet", "Infiltration", "Exploit", "Other"];
 
@@ -38,17 +38,14 @@ function renderUserBadge() {
     const badge = $("userRoleBadge");
     if (badge) {
         badge.textContent = (currentUser.role || "analyst").toUpperCase();
-        badge.className = "role-badge " + currentUser.role;
+        badge.className = "user-role-label " + currentUser.role;
     }
     const avatar = $("userAvatar");
     if (avatar) {
-        const initials = (currentUser.full_name || currentUser.username)
-            .split(" ")
-            .map((n) => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
-        avatar.textContent = initials || "OP";
+        const name = (currentUser.full_name || currentUser.username || "Op").trim();
+        const parts = name.split(/\s+/);
+        const initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]) : name.slice(0, 2);
+        avatar.textContent = initials.toUpperCase();
     }
 }
 
@@ -74,7 +71,7 @@ async function api(path, body) {
 
 // ---------- Tab Routing (Multi-View) ----------
 function switchTab(tabId) {
-    document.querySelectorAll(".nav-tab").forEach((t) => {
+    document.querySelectorAll(".tab-item").forEach((t) => {
         t.classList.toggle("active", t.dataset.tab === tabId);
     });
     document.querySelectorAll(".page-view").forEach((v) => {
@@ -83,6 +80,15 @@ function switchTab(tabId) {
     const target = $("view-" + tabId);
     if (target) target.classList.remove("hidden");
     window.location.hash = "#/" + tabId;
+
+    const titles = {
+        live: "Live Threat Feed",
+        incidents: "Incidents & Triage",
+        models: "Model Health & XAI",
+        ingestion: "Data Ingestion Pipeline",
+        users: "Access Control & RBAC"
+    };
+    if ($("currentViewName")) $("currentViewName").textContent = titles[tabId] || tabId;
 
     if (tabId === "users" && currentUser?.role === "admin") {
         loadUsers();
@@ -95,15 +101,13 @@ function initRouting() {
     const initial = valid.includes(hash) ? hash : "live";
     switchTab(initial);
 
-    const tabs = $("navTabs");
-    if (tabs) {
-        tabs.addEventListener("click", (e) => {
-            const btn = e.target.closest(".nav-tab");
-            if (btn && btn.dataset.tab) {
-                switchTab(btn.dataset.tab);
-            }
-        });
-    }
+    // Global listener for tab switches across sidebar
+    document.addEventListener("click", (e) => {
+        const btn = e.target.closest(".tab-item");
+        if (btn && btn.dataset.tab) {
+            switchTab(btn.dataset.tab);
+        }
+    });
 
     window.addEventListener("hashchange", () => {
         const h = (window.location.hash || "").replace("#/", "");
@@ -120,14 +124,14 @@ async function loadUsers() {
         if (!tbody || !res.users) return;
         tbody.innerHTML = res.users.map((u) => `
             <tr>
-                <td><span class="soc-tier-badge">#${esc(u.id)}</span></td>
-                <td><strong style="color:var(--text); font-family:var(--font-mono);">${esc(u.username)}</strong></td>
+                <td><span class="mono" style="color:var(--text-muted);">#${esc(u.id)}</span></td>
+                <td><strong style="font-family:var(--font-mono);">${esc(u.username)}</strong></td>
                 <td>${esc(u.full_name)}</td>
-                <td><span class="role-badge ${esc(u.role)}">${esc(u.role.toUpperCase())}</span></td>
-                <td><span class="mono">${u.last_login ? new Date(u.last_login).toLocaleString() : '<span class="meta">Never</span>'}</span></td>
+                <td><span class="user-role-label ${esc(u.role)}">${esc(u.role)}</span></td>
+                <td><span class="mono" style="color:var(--text-secondary); font-size:11px;">${u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</span></td>
                 <td>${u.id !== currentUser.id && u.is_active ?
-                    `<button class="btn-danger-outline" onclick="deactivateUser(${u.id})">Deactivate</button>` :
-                    '<span class="meta">—</span>'}</td>
+                    `<button class="btn-outline-danger" onclick="deactivateUser(${u.id})">Deactivate</button>` :
+                    '<span style="color:var(--text-muted);">—</span>'}</td>
             </tr>
         `).join("");
     } catch (e) {
@@ -136,7 +140,7 @@ async function loadUsers() {
 }
 
 window.deactivateUser = async (id) => {
-    if (!confirm("Are you sure you want to deactivate this operator account?")) return;
+    if (!confirm("Deactivate this user account?")) return;
     try {
         const res = await fetch("/api/auth/users/" + id, { method: "DELETE" });
         if (res.ok) {
@@ -146,7 +150,7 @@ window.deactivateUser = async (id) => {
             alert(d.detail || "Failed to deactivate user");
         }
     } catch (e) {
-        alert("Network error: failed to deactivate user");
+        alert("Failed to deactivate user");
     }
 };
 
@@ -160,7 +164,7 @@ function initUserManagement() {
             const password = $("newPassword").value;
             const full_name = $("newFullName").value.trim();
             const role = $("newRole").value;
-            msg.textContent = "Provisioning account…";
+            msg.textContent = "Provisioning user account…";
             try {
                 const res = await fetch("/api/auth/users", {
                     method: "POST",
@@ -169,17 +173,17 @@ function initUserManagement() {
                 });
                 const d = await res.json();
                 if (!res.ok) {
-                    msg.textContent = d.detail || "Error provisioning user";
-                    msg.style.color = "var(--bad)";
+                    msg.textContent = d.detail || "Error creating user";
+                    msg.style.color = "var(--status-critical)";
                 } else {
-                    msg.textContent = `Operator '${username}' provisioned successfully!`;
-                    msg.style.color = "var(--ok)";
+                    msg.textContent = `User '${username}' provisioned successfully.`;
+                    msg.style.color = "var(--status-safe)";
                     form.reset();
                     loadUsers();
                 }
             } catch (err) {
-                msg.textContent = "Failed to provision user";
-                msg.style.color = "var(--bad)";
+                msg.textContent = "Failed to create user";
+                msg.style.color = "var(--status-critical)";
             }
         };
     }
@@ -196,15 +200,19 @@ function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("pids-theme", theme);
     const isDark = theme === "dark";
-    if ($("themeIcon")) $("themeIcon").textContent = isDark ? "☀️" : "🌙";
-    if ($("themeLabel")) $("themeLabel").textContent = isDark ? "Light" : "Dark";
+    if ($("themeIcon")) {
+        $("themeIcon").innerHTML = isDark
+            ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; margin-right:4px;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+            : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    }
+    if ($("themeLabel")) $("themeLabel").textContent = isDark ? "Light Mode" : "Dark Mode";
 
     const textColor = isDark ? "#94a3b8" : "#475569";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.04)";
+    const gridColor = isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.06)";
 
     if (typeof Chart !== "undefined") {
         Chart.defaults.color = textColor;
-        Chart.defaults.font.family = "'Plus Jakarta Sans', system-ui, sans-serif";
+        Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
         [trafficChart, forecastChart, portsChart, histChart, calibChart].forEach((c) => {
             if (c && c.options && c.options.scales) {
                 Object.values(c.options.scales).forEach((s) => {
@@ -244,13 +252,13 @@ function setWsStatus(online) {
     const el = $("wsStatus");
     if (!el) return;
     if (online) {
-        el.textContent = "● WS: LIVE";
-        el.className = "pill-ws pulse";
-        el.title = "Real-time Telemetry WebSocket Stream Active";
+        el.textContent = "Stream: Live";
+        el.className = "badge-tag online";
+        el.title = "WebSocket Connected";
     } else {
-        el.textContent = "○ HTTP: POLLING";
-        el.className = "pill-ws offline";
-        el.title = "WebSocket Disconnected (HTTP Polling Active)";
+        el.textContent = "Stream: Polling";
+        el.className = "badge-tag offline";
+        el.title = "WebSocket Disconnected";
     }
 }
 
@@ -301,18 +309,18 @@ let chartsOk = false;
 function initCharts() {
     const isDark = document.documentElement.getAttribute("data-theme") !== "light";
     const textColor = isDark ? "#94a3b8" : "#475569";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.04)";
+    const gridColor = isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.06)";
     if (typeof Chart !== "undefined") {
         Chart.defaults.color = textColor;
-        Chart.defaults.font.family = "'Plus Jakarta Sans', system-ui, sans-serif";
+        Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
     }
     const base = {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
         scales: {
-            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 11 } } },
-            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 11 } } }
+            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } }
         }
     };
 
@@ -320,8 +328,8 @@ function initCharts() {
         type: "line", data: { labels: [], datasets: [] },
         options: {
             ...base, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
-            elements: { line: { tension: 0.35, borderWidth: 2 } },
-            plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }
+            elements: { line: { tension: 0.1, borderWidth: 1.5 } },
+            plugins: { legend: { position: "bottom", labels: { boxWidth: 8, font: { size: 10.5 } } } }
         }
     });
 
@@ -330,8 +338,8 @@ function initCharts() {
         data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
         options: {
             ...base,
-            plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } },
-            cutout: "65%"
+            plugins: { legend: { position: "bottom", labels: { boxWidth: 8, font: { size: 10.5 } } } },
+            cutout: "70%"
         }
     });
 
@@ -340,20 +348,20 @@ function initCharts() {
         options: {
             ...base, spanGaps: false,
             scales: { y: { min: 0, max: 1, ticks: { callback: (v) => Math.round(v * 100) + "%" } } },
-            elements: { line: { tension: 0.35, borderWidth: 2 } },
-            plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }
+            elements: { line: { tension: 0.1, borderWidth: 1.5 } },
+            plugins: { legend: { position: "bottom", labels: { boxWidth: 8, font: { size: 10.5 } } } }
         }
     });
 
     portsChart = new Chart($("portsChart"), {
         type: "bar",
-        data: { labels: [], datasets: [{ label: "Attack flows", data: [], backgroundColor: "#f59e0b", borderRadius: 4 }] },
+        data: { labels: [], datasets: [{ label: "Flows", data: [], backgroundColor: "#f97316", borderRadius: 2 }] },
         options: { ...base, plugins: { legend: { display: false } } }
     });
 
     histChart = new Chart($("histChart"), {
         type: "bar",
-        data: { labels: [], datasets: [{ label: "Flows", data: [], backgroundColor: "#38bdf8", borderRadius: 4 }] },
+        data: { labels: [], datasets: [{ label: "Flows", data: [], backgroundColor: "#2563eb", borderRadius: 2 }] },
         options: { ...base, plugins: { legend: { display: false } } }
     });
 
@@ -363,8 +371,8 @@ function initCharts() {
 function updateCharts(s) {
     trafficChart.data.labels = s.traffic.labels;
     trafficChart.data.datasets = Object.entries(s.traffic.series).map(([fam, data]) => ({
-        label: fam, data, fill: true, pointRadius: 0, borderWidth: 1.5,
-        borderColor: COLORS[fam] || "#888", backgroundColor: (COLORS[fam] || "#888") + "33"
+        label: fam, data, fill: true, pointRadius: 0, borderWidth: 1.2,
+        borderColor: COLORS[fam] || "#888", backgroundColor: (COLORS[fam] || "#888") + "26"
     }));
     trafficChart.update();
 
@@ -380,7 +388,7 @@ function updateCharts(s) {
         portsChart.update();
     }
     if (s.hist) {
-        $("histTitle").textContent = s.hist.ae ? "Anomaly Score (1.0 = Threshold)" : "Attack Score (1 − P(benign))";
+        $("histTitle").textContent = s.hist.ae ? "Anomaly Score (Threshold: 1.0)" : "Attack Probability Score";
         histChart.data.labels = s.hist.edges.map((e) => e.toFixed(2));
         histChart.data.datasets[0].data = s.hist.counts;
         histChart.update();
@@ -389,39 +397,39 @@ function updateCharts(s) {
 
 // ---------- Rendering ----------
 function kpiHtml(items) {
-    const icons = {
-        "Attack rate (overall)": "⚡",
-        "Critical (open)": "🚨",
-        "Escalated": "⚠️",
-        "Avg confidence": "🎯",
-        "Anomalies (score > 1)": "🧪",
-        "Current share (~30 s)": "⏱️",
-        "Next 30 s forecast": "📈",
-        "Next 60 s avg": "🔮",
-        "Risk level": "🛡️"
-    };
-
     return items.map(([l, v]) => {
-        const icon = icons[l] || "📊";
         const isCrit = l === "Critical (open)" && Number(v) > 0;
         return `
-        <div class="kpi ${isCrit ? 'crit-active' : ''}">
-            <div class="l">${icon} ${esc(l)}</div>
-            <div class="v">${esc(v)}</div>
+        <div class="kpi-card ${isCrit ? 'crit-alert' : ''}">
+            <div class="kpi-header">
+                <span class="kpi-label">${esc(l)}</span>
+                ${isCrit ? '<span class="kpi-badge-alert">ACTIVE</span>' : ''}
+            </div>
+            <div class="kpi-value">${esc(v)}</div>
         </div>`;
     }).join("");
 }
 
 function render(s) {
-    $("status").textContent = s.live ? "LIVE STREAM" : "PAUSED";
-    $("status").className = "pill-status" + (s.live ? " on" : "");
-    $("meta").textContent = `${s.model}${s.autoencoder ? " + AE" : ""} · Queued: ${(s.queued ?? 0).toLocaleString()} · Self-test: ${pct(s.selftest, 1)}`;
-    $("healthWarn").textContent = s.held_out ? "" :
-        "These replay rows may include data the models were trained on, so the metrics below are optimistic. Use as sanity check.";
+    if ($("status")) {
+        $("status").textContent = s.live ? "Scoring: Active" : "Scoring: Paused";
+        $("status").className = "badge-tag" + (s.live ? " online" : "");
+    }
+    if ($("meta")) {
+        $("meta").textContent = `${s.model}${s.autoencoder ? " + AE" : ""} · Buffer: ${(s.queued ?? 0).toLocaleString()} · Agreement: ${pct(s.selftest, 1)}`;
+    }
+    if ($("healthWarn")) {
+        $("healthWarn").textContent = s.held_out ? "" :
+            "Replay flows may include training samples; metrics are for validation sanity checks.";
+    }
     const err = $("error");
-    err.textContent = s.error || "";
-    err.classList.toggle("hidden", !s.error);
-    $("waiting").classList.toggle("hidden", s.has_data);
+    if (err) {
+        err.textContent = s.error || "";
+        err.classList.toggle("hidden", !s.error);
+    }
+    if ($("waiting")) {
+        $("waiting").classList.toggle("hidden", s.has_data);
+    }
 
     if (!s.has_data) return;
 
@@ -435,73 +443,87 @@ function render(s) {
     if (s.kpi.anomalies !== null && s.kpi.anomalies !== undefined) {
         kpiItems.push(["Anomalies (score > 1)", s.kpi.anomalies]);
     }
-    $("kpis").innerHTML = kpiHtml(kpiItems);
+    if ($("kpis")) $("kpis").innerHTML = kpiHtml(kpiItems);
 
     // Live Feed Table
-    $("feed").innerHTML = "<tr><th>Flow ID</th><th>Timestamp</th><th>Verdict</th><th>Threat Vector</th><th>Confidence</th><th>Network Route (Source → Target)</th></tr>" +
-        s.feed.map((r) => `<tr>
-            <td><span class="soc-tier-badge">#${esc(r.event_id)}</span></td>
-            <td><span class="mono" style="color:var(--muted);">${esc(r.capture_time)}</span></td>
-            <td><span class="verdict-tag ${esc(r.verdict)}">${esc(r.verdict)}</span></td>
-            <td><strong style="color:var(--text);">${esc(r.predicted)}</strong></td>
-            <td><span class="mono">${num(r.confidence)}</span></td>
-            <td><span class="mono" style="color:var(--accent); font-weight:600;">${esc(r.src_ip)}</span> <span style="color:var(--muted);">──►</span> <span class="mono" style="color:var(--text);">${esc(r.dst_ip)}:${esc(r.dst_port)}</span></td>
-        </tr>`).join("");
+    if ($("feed")) {
+        $("feed").innerHTML = "<thead><tr><th>Event ID</th><th>Timestamp</th><th>Verdict</th><th>Signature / Attack</th><th>Confidence</th><th>Source → Destination Flow</th></tr></thead><tbody>" +
+            s.feed.map((r) => `<tr>
+                <td><span class="mono" style="color:var(--text-muted);">#${esc(r.event_id)}</span></td>
+                <td><span class="mono" style="color:var(--text-secondary);">${esc(r.capture_time)}</span></td>
+                <td><span class="status-pill ${esc(r.verdict)}">${esc(r.verdict)}</span></td>
+                <td><span style="font-weight:600;">${esc(r.predicted)}</span></td>
+                <td><span class="mono">${num(r.confidence)}</span></td>
+                <td><span class="mono">${esc(r.src_ip)} <span style="color:var(--text-muted); font-size:11px;">→</span> ${esc(r.dst_ip)}:${esc(r.dst_port)}</span></td>
+            </tr>`).join("") + "</tbody>";
+    }
 
     if (chartsOk) updateCharts(s);
 
-    // Top Hostile Source IPs
-    $("topIps").innerHTML = s.top_ips.map(([ip, n]) =>
-        `<li><span class="mono">${esc(ip)}</span><span class="soc-tier-badge" style="background:rgba(239,68,68,0.1); color:var(--bad);">${n.toLocaleString()} flows</span></li>`).join("");
+    // Top Source IPs
+    if ($("topIps")) {
+        $("topIps").innerHTML = s.top_ips.map(([ip, n]) =>
+            `<li><span class="mono" style="font-weight:600;">${esc(ip)}</span><span class="mono" style="color:var(--text-secondary); font-size:11px;">${n.toLocaleString()} flows</span></li>`).join("");
+    }
 
     renderForecast(s.forecast);
 
     // Alert Queue Table
-    const isViewer = currentUser && currentUser.role === "viewer";
-    const triageDisabled = isViewer ? 'disabled title="Viewer role cannot triage alerts (Analyst required)"' : '';
-    $("queue").innerHTML = "<tr><th>ID</th><th>Severity</th><th>Status</th><th>Predicted Attack</th><th>Conf.</th><th>Attack Score</th><th>Anomaly</th><th>Flow Route</th><th>Mitigation Actions</th></tr>" +
-        s.queue.map((r) => `<tr data-row="${esc(r.event_id)}" title="${esc(r.top3)}" style="cursor:pointer">
-      <td><span class="soc-tier-badge">#${esc(r.event_id)}</span></td>
-      <td class="sev-${esc(r.severity)}">${esc(r.severity)}</td>
-      <td><span class="soc-tier-badge" style="background:var(--input-bg);">${esc(r.status)}</span></td>
-      <td><strong style="color:var(--text);">${esc(r.predicted)}</strong></td>
-      <td><span class="mono">${num(r.confidence)}</span></td>
-      <td><span class="mono">${num(r.attack_score)}</span></td>
-      <td><span class="mono">${num(r.anomaly_score)}</span></td>
-      <td><span class="mono" style="color:var(--accent);">${esc(r.src_ip)}</span> <span style="color:var(--muted);">──►</span> <span class="mono">${esc(r.dst_ip)}:${esc(r.dst_port)}</span></td>
-      <td>
-          <button data-id="${esc(r.event_id)}" data-status="Acknowledged" ${triageDisabled}>✓ Ack</button>
-          <button data-id="${esc(r.event_id)}" data-status="False positive" ${triageDisabled}>⊘ False pos.</button>
-          <button data-id="${esc(r.event_id)}" data-status="Escalated" ${triageDisabled} style="color:var(--bad); border-color:rgba(239,68,68,0.3);">▲ Escalate</button>
-      </td></tr>`).join("");
+    if ($("queue")) {
+        const isViewer = currentUser && currentUser.role === "viewer";
+        const triageDisabled = isViewer ? 'disabled title="Analyst permission required"' : '';
+        $("queue").innerHTML = "<thead><tr><th>ID</th><th>Severity</th><th>Status</th><th>Predicted Attack</th><th>Conf.</th><th>Attack Score</th><th>Anomaly</th><th>Flow Routing</th><th>Triage Actions</th></tr></thead><tbody>" +
+            s.queue.map((r) => `<tr data-row="${esc(r.event_id)}" title="${esc(r.top3)}" style="cursor:pointer">
+          <td><span class="mono" style="color:var(--text-muted);">#${esc(r.event_id)}</span></td>
+          <td><span class="sev-${esc(r.severity)}" style="font-size:11.5px; text-transform:uppercase;">${esc(r.severity)}</span></td>
+          <td><span class="badge-tag">${esc(r.status)}</span></td>
+          <td><span style="font-weight:600;">${esc(r.predicted)}</span></td>
+          <td><span class="mono">${num(r.confidence)}</span></td>
+          <td><span class="mono">${num(r.attack_score)}</span></td>
+          <td><span class="mono">${num(r.anomaly_score)}</span></td>
+          <td><span class="mono">${esc(r.src_ip)} <span style="color:var(--text-muted); font-size:11px;">→</span> ${esc(r.dst_ip)}:${esc(r.dst_port)}</span></td>
+          <td>
+              <div class="btn-action-group">
+                  <button class="btn-table-action" data-id="${esc(r.event_id)}" data-status="Acknowledged" ${triageDisabled}>Ack</button>
+                  <button class="btn-table-action" data-id="${esc(r.event_id)}" data-status="False positive" ${triageDisabled}>FP</button>
+                  <button class="btn-table-action danger" data-id="${esc(r.event_id)}" data-status="Escalated" ${triageDisabled}>Escalate</button>
+              </div>
+          </td></tr>`).join("") + "</tbody>";
+    }
 }
 
 function renderForecast(fc) {
     if (!fc || !fc.ready) {
-        $("fcNote").textContent = `Accumulating telemetry window… (${fc ? fc.buckets : 0} of 8 buckets)`;
-        $("fcKpis").innerHTML = "";
-        $("fcFamily").textContent = "";
+        if ($("fcNote")) $("fcNote").textContent = `Collecting window history (${fc ? fc.buckets : 0}/8 buckets)`;
+        if ($("fcKpis")) $("fcKpis").innerHTML = "";
+        if ($("fcFamily")) $("fcFamily").textContent = "";
         const w = $("warning");
-        w.classList.add("hidden");
+        if (w) w.classList.add("hidden");
         return;
     }
-    $("fcNote").textContent = `Risk Level: ${fc.level.toUpperCase()} (Trend: ${fc.trend})` +
-        (fc.skill !== null ? ` · Forecast Skill vs Naïve: ${pct(fc.skill, 0)}` : "");
-
-    const w = $("warning");
-    if (fc.level === "High" || fc.trend === "Rising") {
-        w.textContent = `Forecast Alert: Adversary volume is ${fc.level.toLowerCase()} and ${fc.trend.toLowerCase()}. Expected malicious share next 60s: ${pct(fc.next, 1)}.`;
-        w.classList.remove("hidden");
-    } else {
-        w.classList.add("hidden");
+    if ($("fcNote")) {
+        $("fcNote").textContent = `Risk Level: ${fc.level} (Trend: ${fc.trend})` +
+            (fc.skill !== null ? ` · Skill vs Naïve: ${pct(fc.skill, 0)}` : "");
     }
 
-    $("fcKpis").innerHTML = kpiHtml([
-        ["Current share (~30 s)", pct(fc.now, 1)],
-        ["Next 30 s forecast", pct(fc.next30, 1)],
-        ["Next 60 s avg", pct(fc.next, 1)],
-        ["Risk level", fc.level],
-    ]);
+    const w = $("warning");
+    if (w) {
+        if (fc.level === "High" || fc.trend === "Rising") {
+            w.textContent = `Forecast Alert: Attack share is ${fc.level.toLowerCase()} and ${fc.trend.toLowerCase()}. Expected share next 60s: ${pct(fc.next, 1)}.`;
+            w.classList.remove("hidden");
+        } else {
+            w.classList.add("hidden");
+        }
+    }
+
+    if ($("fcKpis")) {
+        $("fcKpis").innerHTML = kpiHtml([
+            ["Current share (~30 s)", pct(fc.now, 1)],
+            ["Next 30 s forecast", pct(fc.next30, 1)],
+            ["Next 60 s avg", pct(fc.next, 1)],
+            ["Risk level", fc.level],
+        ]);
+    }
 
     if (chartsOk) {
         forecastChart.data.labels = fc.labels;
@@ -509,22 +531,24 @@ function renderForecast(fc) {
             {
                 label: "Observed attack share",
                 data: fc.observed.concat(Array(fc.forecast.length).fill(null)),
-                borderColor: "#38bdf8", backgroundColor: "rgba(56, 189, 248, 0.15)",
-                fill: true, tension: 0.35, borderWidth: 2
+                borderColor: "#2563eb", backgroundColor: "rgba(37, 99, 235, 0.1)",
+                fill: true, tension: 0.1, borderWidth: 1.5
             },
             {
-                label: "Holt forecast (Next 60s)",
+                label: "Holt forecast",
                 data: Array(fc.observed.length - 1).fill(null).concat([fc.observed[fc.observed.length - 1]]).concat(fc.forecast),
-                borderColor: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.15)",
-                borderDash: [5, 5], fill: true, tension: 0.35, borderWidth: 2
+                borderColor: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.1)",
+                borderDash: [4, 4], fill: true, tension: 0.1, borderWidth: 1.5
             }
         ];
         forecastChart.update();
     }
 
-    $("fcFamily").textContent = fc.top_family
-        ? `Likely dominant threat vector: ${fc.top_family} (${pct(fc.top_family_share, 0)} of recent attack volume)`
-        : "Likely next threat vector: None detected in last 60s.";
+    if ($("fcFamily")) {
+        $("fcFamily").textContent = fc.top_family
+            ? `Dominant threat family: ${fc.top_family} (${pct(fc.top_family_share, 0)} share)`
+            : "Next threat family: None in recent window.";
+    }
 }
 
 // ---------- Polling ----------
@@ -552,8 +576,8 @@ async function refresh() {
         }
         render(s);
     } catch (e) {
-        if (e.message !== "401 Unauthorized") {
-            $("error").textContent = "Telemetry engine offline: " + e.message;
+        if (e.message !== "401 Unauthorized" && $("error")) {
+            $("error").textContent = "Service unreachable: " + e.message;
             $("error").classList.remove("hidden");
         }
     } finally { busy = false; }
@@ -585,7 +609,7 @@ document.querySelectorAll(".sev").forEach((c) => (c.onchange = refresh));
 
 if ($("famBox")) {
     $("famBox").innerHTML = FAMILIES.map((f) =>
-        `<label class="row" style="display:flex; align-items:center; gap:8px; margin:6px 0; font-size:12px; cursor:pointer;"><input type="checkbox" class="fam" value="${esc(f)}" checked> ${esc(f)}</label>`).join("");
+        `<label><input type="checkbox" class="fam" value="${esc(f)}" checked> ${esc(f)}</label>`).join("");
     $("famBox").addEventListener("change", refresh);
 }
 
@@ -605,13 +629,13 @@ if ($("uploadFile")) {
     $("uploadFile").onchange = async () => {
         const f = $("uploadFile").files[0];
         if (!f) return;
-        $("uploadMsg").textContent = "Parsing network packet flows…";
+        $("uploadMsg").textContent = "Processing packet capture…";
         const fd = new FormData();
         fd.append("file", f);
         try {
             const res = await fetch("/api/upload", { method: "POST", body: fd });
             const r = await res.json();
-            $("uploadMsg").textContent = r.ok ? `✓ Extracted & queued ${r.queued.toLocaleString()} flows` : (r.error || "Upload failed");
+            $("uploadMsg").textContent = r.ok ? `Queued ${r.queued.toLocaleString()} flows` : (r.error || "Upload failed");
         } catch (e) { $("uploadMsg").textContent = "Upload failed: " + e.message; }
         refresh();
     };
@@ -624,31 +648,33 @@ async function openDrawer(id) {
     if (!r.found) return;
     const top3 = String(r.top3 || "").split(" | ").map((t) => `<li>${esc(t)}</li>`).join("");
     const isViewer = currentUser && currentUser.role === "viewer";
-    const triageDisabled = isViewer ? 'disabled title="Viewer role cannot triage alerts (Analyst required)"' : '';
+    const triageDisabled = isViewer ? 'disabled title="Analyst permission required"' : '';
 
     $("drawerBody").innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <h3 style="margin:0; font-size:18px;">Threat Telemetry #${esc(r.event_id)}</h3>
-        <span class="verdict-tag ${esc(r.verdict)}">${esc(r.verdict)}</span>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border-base); padding-bottom:10px;">
+        <span class="mono" style="font-size:14px; font-weight:700;">ALERT #${esc(r.event_id)}</span>
+        <span class="status-pill ${esc(r.verdict)}">${esc(r.verdict)}</span>
     </div>
-    <div style="margin-bottom:14px;"><span class="sev-${esc(r.severity)}" style="font-size:16px;">Severity: ${esc(r.severity)}</span></div>
-    <dl>
-      <dt>Classification</dt><dd><strong>${esc(r.predicted)}</strong> (${esc(r.family)})</dd>
-      <dt>Confidence</dt><dd>${num(r.confidence)}</dd>
+    <div style="margin-bottom:14px; display:flex; align-items:center; justify-content:space-between;">
+        <span class="sev-${esc(r.severity)}" style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">SEVERITY: ${esc(r.severity)}</span>
+        <span class="mono" style="font-size:11px; color:var(--text-muted);">${esc(r.capture_time)}</span>
+    </div>
+    <dl class="drawer-dl">
+      <dt>Predicted Attack</dt><dd><strong>${esc(r.predicted)}</strong> <span style="color:var(--text-muted);">(${esc(r.family)})</span></dd>
+      <dt>Model Confidence</dt><dd>${pct(r.confidence, 1)}</dd>
       <dt>Attack Score</dt><dd>${num(r.attack_score)}</dd>
       <dt>Anomaly Score</dt><dd>${num(r.anomaly_score)}</dd>
-      <dt>Model Uncertainty</dt><dd>${num(r.uncertainty)}</dd>
-      <dt>Flow Routing</dt><dd>${esc(r.src_ip)} ──► ${esc(r.dst_ip)}:${esc(r.dst_port)}</dd>
-      <dt>Packet Timestamp</dt><dd>${esc(r.capture_time)}</dd>
-      <dt>Triage Status</dt><dd>${esc(r.status)}</dd>
-      <dt>Ground Truth</dt><dd>${esc(r.actual)} <span class="meta">(Replay Validation)</span></dd>
+      <dt>Uncertainty</dt><dd>${num(r.uncertainty)}</dd>
+      <dt>Flow Routing</dt><dd style="font-size:11px;">${esc(r.src_ip)} → ${esc(r.dst_ip)}:${esc(r.dst_port)}</dd>
+      <dt>Triage Status</dt><dd><span class="badge-tag">${esc(r.status)}</span></dd>
+      <dt>Ground Truth</dt><dd>${esc(r.actual)} <span style="color:var(--text-muted); font-size:10px;">(Replay)</span></dd>
     </dl>
-    <h4 style="margin: 20px 0 8px 0; font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted);">Top-3 Multi-Class Probabilities</h4>
-    <ul style="font-family:var(--font-mono); font-size:12px; line-height:2; color:var(--text); padding-left:20px;">${top3}</ul>
-    <div style="display:flex; gap:8px; margin-top:24px;">
-        <button data-id="${esc(r.event_id)}" data-status="Acknowledged" ${triageDisabled}>✓ Acknowledge</button>
-        <button data-id="${esc(r.event_id)}" data-status="False positive" ${triageDisabled}>⊘ False Positive</button>
-        <button data-id="${esc(r.event_id)}" data-status="Escalated" ${triageDisabled} style="background:rgba(239,68,68,0.15); color:var(--bad); border-color:var(--bad);">▲ Escalate</button>
+    <div style="margin-top:18px; font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Top 3 Class Attributions</div>
+    <ul style="font-family:var(--font-mono); font-size:11.5px; line-height:1.8; color:var(--text-primary); padding-left:16px; margin:8px 0 18px;">${top3}</ul>
+    <div style="display:flex; gap:6px; margin-top:20px;">
+        <button class="btn-table-action" data-id="${esc(r.event_id)}" data-status="Acknowledged" ${triageDisabled}>Acknowledge</button>
+        <button class="btn-table-action" data-id="${esc(r.event_id)}" data-status="False positive" ${triageDisabled}>False Positive</button>
+        <button class="btn-table-action danger" data-id="${esc(r.event_id)}" data-status="Escalated" ${triageDisabled}>Escalate</button>
     </div>`;
     $("drawer").classList.remove("hidden");
 }
@@ -681,20 +707,20 @@ async function loadHealth() {
     try {
         const h = await api("/api/health");
         if (!h.ready || !h.labelled) {
-            $("healthTable").innerHTML = '<tr><td class="meta">No labelled flows yet (live and uploaded feeds carry no ground truth).</td></tr>';
+            $("healthTable").innerHTML = '<tr><td style="color:var(--text-muted);">No ground-truth labels available for current feed.</td></tr>';
             $("cmTable").innerHTML = "";
             return;
         }
-        $("healthTable").innerHTML = "<tr><th>Class</th><th>Precision</th><th>Recall</th><th>Support</th></tr>" +
-            h.classes.map((c, i) => `<tr><td><strong>${esc(c)}</strong></td><td><span class="mono">${num(h.precision[i])}</span></td><td><span class="mono">${num(h.recall[i])}</span></td><td><span class="mono">${h.support[i]}</span></td></tr>`).join("");
-        $("cmTable").innerHTML = "<tr><th></th>" + h.classes.map((c) => `<th>${esc(c)}</th>`).join("") + "</tr>" +
+        $("healthTable").innerHTML = "<thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>Support</th></tr></thead><tbody>" +
+            h.classes.map((c, i) => `<tr><td><strong>${esc(c)}</strong></td><td><span class="mono">${num(h.precision[i])}</span></td><td><span class="mono">${num(h.recall[i])}</span></td><td><span class="mono">${h.support[i]}</span></td></tr>`).join("") + "</tbody>";
+        $("cmTable").innerHTML = "<thead><tr><th></th>" + h.classes.map((c) => `<th>${esc(c)}</th>`).join("") + "</tr></thead><tbody>" +
             h.classes.map((row, i) => `<tr><th>${esc(row)}</th>` + h.matrix[i].map((v) =>
-                `<td style="background:rgba(56,189,248,${(v * 0.8).toFixed(2)}); font-family:var(--font-mono); font-weight:600;">${v >= 0.005 ? v.toFixed(2) : ""}</td>`).join("") + "</tr>").join("");
+                `<td style="background:rgba(37,99,235,${(v * 0.7).toFixed(2)}); font-family:var(--font-mono);">${v >= 0.005 ? v.toFixed(2) : ""}</td>`).join("") + "</tr>").join("") + "</tbody>";
         if (typeof Chart !== "undefined") {
             if (!calibChart) {
                 calibChart = new Chart($("calibChart"), {
                     type: "bar",
-                    data: { labels: [], datasets: [{ label: "Accuracy", data: [], backgroundColor: "#38bdf8", borderRadius: 4 }] },
+                    data: { labels: [], datasets: [{ label: "Accuracy", data: [], backgroundColor: "#2563eb", borderRadius: 2 }] },
                     options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { y: { min: 0, max: 1 } } }
                 });
             }

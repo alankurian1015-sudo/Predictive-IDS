@@ -4,389 +4,524 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PIDS · Predictive Intrusion Detection & Threat Intelligence</title>
+    <title>Predictive IDS · Enterprise Telemetry & Threat Correlation</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Chart.js: local copy first (static/chart.umd.min.js), CDN as a fallback -->
+    <!-- Chart.js: local copy first, CDN fallback -->
     <script src="chart.umd.min.js"></script>
     <script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>');</script>
 </head>
 
 <body>
-    <!-- Command Header -->
-    <header>
-        <div class="brand-lockup">
-            <div class="brand-icon">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-            </div>
-            <div class="brand-text">
-                <h1>
-                    <span>Predictive IDS</span>
-                    <span class="soc-tier-badge">SOC Level 3</span>
-                </h1>
-            </div>
-        </div>
-
-        <div class="header-right">
-            <button id="themeToggle" class="theme-toggle" type="button" title="Toggle Dark / Light Mode">
-                <span id="themeIcon">☀️</span> <span id="themeLabel">Light</span>
-            </button>
-            <span id="wsStatus" class="pill-ws" title="Real-time WebSocket Live Feed">● WS: CONNECTING</span>
-            <span id="status" class="pill-status">PAUSED</span>
-        </div>
-    </header>
-
-    <!-- Top Navigation Tabs & User Menu -->
-    <nav class="nav-bar">
-        <div class="nav-tabs" id="navTabs">
-            <button class="nav-tab active" data-tab="live">
-                <span>📊</span> Situation Room
-            </button>
-            <button class="nav-tab" data-tab="incidents">
-                <span>🚨</span> Incidents & Triage 
-                <span id="incNavBadge" class="nav-badge hidden">0</span>
-            </button>
-            <button class="nav-tab" data-tab="models">
-                <span>🧠</span> Model Health & XAI
-            </button>
-            <button class="nav-tab" data-tab="ingestion" id="tabIngestion">
-                <span>⚙️</span> Ingestion & Replay
-            </button>
-            <button class="nav-tab" data-tab="users" id="tabUsers">
-                <span>👥</span> SOC Personnel
-            </button>
-        </div>
-
-        <div class="user-menu" id="userMenu">
-            <div class="user-pill">
-                <span class="user-avatar" id="userAvatar">OP</span>
-                <span id="userName">Analyst</span>
-                <span id="userRoleBadge" class="role-badge analyst">Analyst</span>
-            </div>
-            <button id="logoutBtn" class="logout-btn" type="button" title="Sign out of SOC Portal">Sign Out</button>
-        </div>
-    </nav>
-
-    <!-- Global Threat Filter HUD Toolbar -->
-    <div class="filter-hud" id="filterHud">
-        <div class="hud-group">
-            <div class="hud-item">
-                <span>Live Feed</span>
-                <label class="switch">
-                    <input type="checkbox" id="live" checked>
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="hud-item">
-                <span>Min Conf:</span>
-                <div class="range-wrap">
-                    <input type="range" id="minConf" min="0" max="1" step="0.05" value="0">
-                    <span id="minConfVal" class="soc-tier-badge">0.00</span>
-                </div>
-            </div>
-
-            <div class="hud-item">
-                <span>Severity:</span>
-                <div class="sev-pills">
-                    <label class="sev-chip crit"><input type="checkbox" class="sev" value="Critical" checked>Critical</label>
-                    <label class="sev-chip high"><input type="checkbox" class="sev" value="High" checked>High</label>
-                    <label class="sev-chip"><input type="checkbox" class="sev" value="Medium" checked>Medium</label>
-                    <label class="sev-chip"><input type="checkbox" class="sev" value="Info">Info</label>
-                </div>
-            </div>
-        </div>
-
-        <div class="hud-group">
-            <div class="hud-item" id="famContainer">
-                <details style="position: relative;">
-                    <summary class="theme-toggle" style="list-style: none; cursor: pointer;">Threat Families ▾</summary>
-                    <div id="famBox" style="position: absolute; right: 0; top: 100%; margin-top: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; z-index: 50; width: 220px; box-shadow: var(--card-shadow-hover);"></div>
-                </details>
-            </div>
-
-            <a class="theme-toggle" href="/api/export" id="exportLink" style="text-decoration: none;">
-                <span>📥</span> Export CSV
-            </a>
-            <span id="meta" class="meta" style="font-family: var(--font-mono); font-size: 11px;"></span>
-        </div>
-    </div>
-
-    <!-- Alert / Status Banners -->
-    <div style="padding: 12px 24px 0;">
-        <div id="error" class="banner error hidden"></div>
-        <div id="warning" class="banner warn hidden"></div>
-    </div>
-
-    <!-- Main Viewport Canvas -->
-    <main class="dashboard-viewport">
-        <p id="waiting" class="meta" style="text-align: center; padding: 20px;">Initializing neural telemetry pipeline… (Live stream active)</p>
-
-        <!-- ================= VIEW 1: SITUATION ROOM ================= -->
-        <div id="view-live" class="page-view">
-            <!-- Hero KPIs -->
-            <section id="kpis" class="kpis"></section>
-
-            <!-- Real-time Live Flows Table -->
-            <section class="panel">
-                <h3>
-                    <span>Live Telemetry Feed · Inspected Network Flows</span>
-                    <span class="meta" style="font-size: 11px; font-weight: normal;">Updates every 2 seconds</span>
-                </h3>
-                <div class="scroll">
-                    <table id="feed"></table>
-                </div>
-            </section>
-
-            <!-- Chart Row 1 -->
-            <section class="grid3">
-                <div class="panel">
-                    <h3>Traffic Volume by Attack Family</h3>
-                    <div class="chart"><canvas id="trafficChart"></canvas></div>
-                </div>
-                <div class="panel">
-                    <h3>Threat Vector Distribution</h3>
-                    <div class="chart"><canvas id="familyChart"></canvas></div>
-                </div>
-                <div class="panel">
-                    <h3>Top Hostile Source IPs</h3>
-                    <ol id="topIps" class="list"></ol>
-                </div>
-            </section>
-
-            <!-- Chart Row 2 -->
-            <section class="grid2">
-                <div class="panel">
-                    <h3>Targeted Ports Breakdown</h3>
-                    <div class="chart"><canvas id="portsChart"></canvas></div>
-                </div>
-                <div class="panel">
-                    <h3 id="histTitle">Classifier Anomaly Distribution</h3>
-                    <div class="chart"><canvas id="histChart"></canvas></div>
-                </div>
-            </section>
-
-            <!-- Predictive 60s Forecast Outlook -->
-            <section class="panel">
-                <h3>
-                    <span>Predictive Attack Outlook · 60s Horizon</span>
-                    <span id="fcFamily" class="meta" style="font-size: 12px; font-weight: normal;"></span>
-                </h3>
-                <p id="fcNote" class="meta"></p>
-                <div id="fcKpis" class="kpis small" style="margin-bottom: 12px;"></div>
-                <div class="chart tall"><canvas id="forecastChart"></canvas></div>
-            </section>
-        </div>
-
-        <!-- ================= VIEW 2: INCIDENTS & ALERT TRIAGE ================= -->
-        <div id="view-incidents" class="page-view hidden">
-            <section class="panel">
-                <h3>
-                    <span>Adversary Progression & Predictive Kill-Chain (MITRE ATT&CK)</span>
-                    <span id="incSummary" class="meta" style="font-size: 12px; font-weight: normal;"></span>
-                </h3>
-                <div id="killChainOverview" class="kill-chain-matrix"></div>
-                <h4>Correlated Security Incidents</h4>
-                <div class="scroll">
-                    <table id="incidents"></table>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h3>Active Alert Queue · Priority Triage</h3>
-                <p class="meta">Select any flow to inspect feature anomalies, view top-3 confidence scores, and assign mitigation verdicts.</p>
-                <div class="scroll">
-                    <table id="queue"></table>
-                </div>
-            </section>
-        </div>
-
-        <!-- ================= VIEW 3: MODEL HEALTH & XAI ================= -->
-        <div id="view-models" class="page-view hidden">
-            <section class="panel" id="explainPanel">
-                <h3>Explainable AI (XAI) · Neural Decision Attribution</h3>
-                <p class="meta">Identify which network features contribute to malicious classifications. SHAP evaluates attack flows against a baseline benign distribution.</p>
-                <div class="grid2">
-                    <div>
-                        <h4>Global Feature Importance</h4>
-                        <div id="impBuiltin"></div>
+    <div class="app-shell">
+        <!-- ================= LEFT NAVIGATION SIDEBAR ================= -->
+        <aside class="app-sidebar" id="appSidebar">
+            <div class="sidebar-top">
+                <!-- Brand Header -->
+                <div class="sidebar-brand">
+                    <div class="brand-shield">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
                     </div>
-                    <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <h4 style="margin: 0;">SHAP Local Explanation</h4>
-                            <select id="shapClass" class="user-form" style="padding: 4px 8px; font-size: 12px;">
-                                <option value="">All Attack Classes</option>
-                            </select>
+                    <div class="brand-meta">
+                        <div class="brand-name">
+                            <span>Predictive IDS</span>
+                            <span class="brand-tag">v2.4</span>
                         </div>
-                        <div class="rowline" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
-                            <select id="shapMethod" class="user-form" style="padding: 4px 8px; font-size: 12px;">
-                                <option value="kernel" selected>Kernel SHAP (Deep/All)</option>
-                                <option value="tree">Tree SHAP (Fast)</option>
-                            </select>
-                            <select id="shapN" class="user-form" style="padding: 4px 8px; font-size: 12px;">
-                                <option value="20">20 Flows</option>
-                                <option value="40" selected>40 Flows</option>
-                                <option value="80">80 Flows</option>
-                            </select>
-                            <span class="kOnly">
-                                <select id="shapNs" class="user-form" style="padding: 4px 8px; font-size: 12px;">
-                                    <option value="200">200 Samples</option>
-                                    <option value="500" selected>500 Samples</option>
-                                    <option value="1000">1000 Samples</option>
-                                </select>
-                            </span>
-                            <span class="kOnly">
-                                <select id="shapBudget" class="user-form" style="padding: 4px 8px; font-size: 12px;">
-                                    <option value="60">1 Min Limit</option>
-                                    <option value="120" selected>2 Min Limit</option>
-                                    <option value="300">5 Min Limit</option>
-                                </select>
-                            </span>
-                            <span class="tOnly hidden">
-                                <select id="shapTrees" class="user-form" style="padding: 4px 8px; font-size: 12px;">
-                                    <option value="0">All Trees</option>
-                                    <option value="50">First 50</option>
-                                </select>
-                            </span>
-                            <button id="shapRun" class="btn-primary" style="padding: 6px 14px;">Compute SHAP</button>
-                            <button id="shapStop" class="btn-danger-outline hidden">Stop</button>
-                        </div>
-                        <p id="shapMsg" class="meta"></p>
-                        <div id="impShap"></div>
+                        <span class="brand-subtitle">Telemetry & XAI Platform</span>
                     </div>
                 </div>
-            </section>
 
-            <details id="healthBox" class="panel" open>
-                <summary style="font-weight: 700; font-size: 15px; cursor: pointer;">Ground Truth Validation & Calibration</summary>
-                <p id="healthWarn" class="meta"></p>
-                <div class="scroll">
-                    <table id="healthTable"></table>
-                </div>
-                <h4 style="margin-top: 20px;">Confusion Matrix (Row-Normalized)</h4>
-                <div class="scroll">
-                    <table id="cmTable" class="cm"></table>
-                </div>
-                <h4 style="margin-top: 20px;">Model Calibration: Accuracy per Confidence Bin</h4>
-                <div class="chart"><canvas id="calibChart"></canvas></div>
-            </details>
-        </div>
+                <!-- Navigation Tabs Group -->
+                <div class="sidebar-nav-container">
+                    <div class="nav-category">
+                        <div class="nav-category-label">Detection & Telemetry</div>
+                        <div class="tab-list" id="navTabs">
+                            <button class="tab-item active" data-tab="live">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                                </svg>
+                                <span class="tab-title">Live Threat Feed</span>
+                            </button>
+                            <button class="tab-item" data-tab="incidents">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="12" y1="8" x2="12" y2="12"/>
+                                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                                </svg>
+                                <span class="tab-title">Incidents & Triage</span>
+                                <span id="incNavBadge" class="tab-count hidden">0</span>
+                            </button>
+                        </div>
+                    </div>
 
-        <!-- ================= VIEW 4: INGESTION & REPLAY (ADMIN ONLY) ================= -->
-        <div id="view-ingestion" class="page-view hidden">
-            <section class="panel">
-                <h3>Telemetry Feed & Packet Engine Administration</h3>
-                <p class="meta">Switch real-time telemetry inputs, upload Wireshark PCAPs, or fast-forward replay data.</p>
-                
-                <div class="grid2">
-                    <div style="background: var(--input-bg); padding: 18px; border-radius: 10px; border: 1px solid var(--line);">
-                        <label><strong>Active Ingestion Pipeline:</strong>
-                            <select id="source" class="user-form" style="width: 100%; margin-top: 8px;">
-                                <option value="replay">Replay Stream (CIC-IDS2017 Dataset)</option>
-                                <option value="watch">Live Watcher (Appended CSV in live/)</option>
-                                <option value="upload">Ad-hoc PCAP / PCAPNG / CSV Ingestion</option>
-                            </select>
+                    <div class="nav-category">
+                        <div class="nav-category-label">Intelligence & Forensics</div>
+                        <div class="tab-list">
+                            <button class="tab-item" data-tab="models">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+                                    <rect x="9" y="9" width="6" height="6"/>
+                                    <line x1="9" y1="1" x2="9" y2="4"/>
+                                    <line x1="15" y1="1" x2="15" y2="4"/>
+                                    <line x1="9" y1="20" x2="9" y2="23"/>
+                                    <line x1="15" y1="20" x2="15" y2="23"/>
+                                    <line x1="20" y1="9" x2="23" y2="9"/>
+                                    <line x1="20" y1="14" x2="23" y2="14"/>
+                                    <line x1="1" y1="9" x2="4" y2="9"/>
+                                    <line x1="1" y1="14" x2="4" y2="14"/>
+                                </svg>
+                                <span class="tab-title">Model Health & XAI</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="nav-category">
+                        <div class="nav-category-label">Administration</div>
+                        <div class="tab-list">
+                            <button class="tab-item" data-tab="ingestion" id="tabIngestion">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <span class="tab-title">Data Ingestion</span>
+                            </button>
+                            <button class="tab-item" data-tab="users" id="tabUsers">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                </svg>
+                                <span class="tab-title">Access Control</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar Telemetry Mini Card -->
+            <div class="sidebar-telemetry-hud">
+                <div class="sidebar-telemetry-row">
+                    <span class="label">Socket Feed:</span>
+                    <span id="wsStatus" class="badge-tag online" title="WebSocket Live Feed">Stream: Live</span>
+                </div>
+                <div class="sidebar-telemetry-row">
+                    <span class="label">Detection:</span>
+                    <span id="status" class="badge-tag">Scoring: Active</span>
+                </div>
+                <div id="meta" class="sidebar-telemetry-meta">Connecting…</div>
+            </div>
+
+            <!-- Sidebar User & Session Tray -->
+            <div class="sidebar-footer" id="userMenu">
+                <div class="user-identity-card">
+                    <div class="user-avatar-circle" id="userAvatar">AN</div>
+                    <div class="user-details">
+                        <span class="user-name-text" id="userName">Analyst</span>
+                        <span id="userRoleBadge" class="user-role-label analyst">Analyst</span>
+                    </div>
+                </div>
+                <div class="sidebar-actions-row">
+                    <button id="themeToggle" class="btn-icon-subtle" type="button" title="Toggle Light/Dark Theme" style="flex: 1;">
+                        <span id="themeIcon"></span>
+                        <span id="themeLabel">Light</span>
+                    </button>
+                    <button id="logoutBtn" class="btn-icon-subtle" type="button" title="End Session" style="flex: 1;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                        <span>Sign Out</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ================= MAIN WORKSPACE ================= -->
+        <div class="app-main">
+            <!-- Top Application Context & Filter HUD -->
+            <header class="app-topbar">
+                <div class="topbar-left">
+                    <div class="topbar-breadcrumb">
+                        <span class="crumb-root">OPERATIONS</span>
+                        <span class="crumb-divider">/</span>
+                        <span class="crumb-current" id="currentViewName">Live Threat Feed</span>
+                    </div>
+                    <span class="topbar-pulse-pill">
+                        <span class="pulse-dot-green"></span>
+                        <span>2.0s TICK</span>
+                    </span>
+                </div>
+
+                <!-- Secondary Filter HUD -->
+                <div class="filter-strip" id="filterHud">
+                    <div class="filter-group">
+                        <label class="toggle-switch" title="Toggle real-time scoring stream">
+                            <input type="checkbox" id="live" checked>
+                            <span class="toggle-slider"></span>
                         </label>
+                        <span style="font-weight: 500;">Live Scoring</span>
+                    </div>
 
-                        <div id="watchBox" class="hidden" style="margin-top: 16px;">
-                            <label>Monitored CSV Path:
-                                <input id="watchPath" value="live/flows.csv" class="user-form" style="width: 100%; margin-top: 6px;">
-                            </label>
-                        </div>
-
-                        <div id="uploadBox" class="hidden" style="margin-top: 16px;">
-                            <label>Upload Network Capture (Max 150 MB):
-                                <input type="file" id="uploadFile" accept=".csv,.pcap,.pcapng,.cap" class="user-form" style="width: 100%; margin-top: 6px;">
-                                <span id="uploadMsg" class="meta" style="display: block; margin-top: 4px;"></span>
-                            </label>
+                    <div class="filter-group">
+                        <span>Min Conf:</span>
+                        <div class="range-input-inline">
+                            <input type="range" id="minConf" min="0" max="1" step="0.05" value="0">
+                            <span id="minConfVal" class="mono" style="font-size: 11px;">0.00</span>
                         </div>
                     </div>
 
-                    <div style="background: var(--input-bg); padding: 18px; border-radius: 10px; border: 1px solid var(--line);">
-                        <label><strong>Scoring Engine Velocity (Flows / 2s Tick):</strong>
-                            <input type="number" id="rate" min="1" max="500" value="20" class="user-form" style="width: 100%; margin-top: 8px;">
-                        </label>
+                    <div class="filter-group">
+                        <div class="severity-group">
+                            <label class="severity-pill crit"><input type="checkbox" class="sev" value="Critical" checked>Critical</label>
+                            <label class="severity-pill high"><input type="checkbox" class="sev" value="High" checked>High</label>
+                            <label class="severity-pill"><input type="checkbox" class="sev" value="Medium" checked>Medium</label>
+                            <label class="severity-pill"><input type="checkbox" class="sev" value="Info">Info</label>
+                        </div>
+                    </div>
 
-                        <div style="margin-top: 16px;">
-                            <label><strong>Replay Day Timeline Jump:</strong></label>
-                            <div style="display: flex; gap: 8px; margin-top: 6px;">
-                                <select id="day" class="user-form" style="flex: 1;"></select>
-                                <button id="jump" class="btn-primary" style="padding: 8px 16px;">Jump</button>
+                    <div class="filter-group" id="famContainer">
+                        <details class="threat-dropdown">
+                            <summary class="btn-icon-subtle">
+                                <span>Threats</span>
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </summary>
+                            <div id="famBox" class="dropdown-menu-popover"></div>
+                        </details>
+                    </div>
+
+                    <div class="filter-group">
+                        <button id="ff" class="btn-icon-subtle" title="Fast-forward buffer 60 ticks">FF 2m</button>
+                        <button id="clear" class="btn-icon-subtle" title="Clear buffer">Clear</button>
+                        <a class="btn-icon-subtle" href="/api/export" id="exportLink" title="Export incident flows to CSV">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Export</span>
+                        </a>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Canvas Viewport -->
+            <main class="app-canvas">
+                <div class="canvas-container">
+                    <!-- Global Banners -->
+                    <div id="error" class="banner error hidden"></div>
+                    <div id="warning" class="banner warn hidden"></div>
+                    <p id="waiting" class="mono" style="color: var(--text-muted); font-size: 12px; margin: 0 0 12px;">Connecting to telemetry stream…</p>
+
+                    <!-- ================= VIEW 1: LIVE FEED ================= -->
+                    <div id="view-live" class="page-view">
+                        <!-- Hero KPIs -->
+                        <section id="kpis" class="kpis"></section>
+
+                        <!-- Latest Flows Table -->
+                        <section class="panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h3 class="panel-title">Real-Time Flow Telemetry</h3>
+                                    <span class="panel-subtitle">Streaming classification verdicts refreshed every 2000ms</span>
+                                </div>
                             </div>
-                        </div>
+                            <div class="table-container">
+                                <table id="feed"></table>
+                            </div>
+                        </section>
 
-                        <div style="display: flex; gap: 10px; margin-top: 20px;">
-                            <button id="ff" class="btn-primary" style="flex: 1; background: var(--panel-hover); color: var(--text); border: 1px solid var(--line);">Fast-Forward 2 Min</button>
-                            <button id="clear" class="btn-danger-outline" style="flex: 1; padding: 10px;">Purge Alert Memory</button>
-                        </div>
+                        <!-- Chart Row 1 -->
+                        <section class="grid3">
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">Traffic by Threat Family</h3>
+                                </div>
+                                <div class="chart"><canvas id="trafficChart"></canvas></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">Attack Type Ratio</h3>
+                                </div>
+                                <div class="chart"><canvas id="familyChart"></canvas></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">Top Hostile Source IPs</h3>
+                                </div>
+                                <ol id="topIps" class="ip-rank-list"></ol>
+                            </div>
+                        </section>
+
+                        <!-- Chart Row 2 -->
+                        <section class="grid2">
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">Targeted Network Ports</h3>
+                                </div>
+                                <div class="chart"><canvas id="portsChart"></canvas></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title" id="histTitle">Score Distribution</h3>
+                                </div>
+                                <div class="chart"><canvas id="histChart"></canvas></div>
+                            </div>
+                        </section>
+
+                        <!-- Predictive 60s Forecast Outlook -->
+                        <section class="panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h3 class="panel-title">Predictive Outlook (~60s Horizon)</h3>
+                                    <span id="fcFamily" class="panel-subtitle"></span>
+                                </div>
+                            </div>
+                            <p id="fcNote" style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px;"></p>
+                            <div id="fcKpis" class="kpis small" style="margin-bottom: 12px;"></div>
+                            <div class="chart tall"><canvas id="forecastChart"></canvas></div>
+                        </section>
+                    </div>
+
+                    <!-- ================= VIEW 2: INCIDENTS & ALERT TRIAGE ================= -->
+                    <div id="view-incidents" class="page-view hidden">
+                        <section class="panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h3 class="panel-title">MITRE ATT&CK Kill-Chain Progression</h3>
+                                    <span id="incSummary" class="panel-subtitle"></span>
+                                </div>
+                            </div>
+                            <div id="killChainOverview" class="matrix-stages"></div>
+                            
+                            <div class="panel-header" style="margin-top: 18px;">
+                                <div>
+                                    <h3 class="panel-title">Correlated Security Incidents</h3>
+                                    <span class="panel-subtitle">Aggregated clusters by threat origin, stage vector, and footprint</span>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table id="incidents"></table>
+                            </div>
+                        </section>
+
+                        <section class="panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h3 class="panel-title">Real-Time Alert Triage Queue</h3>
+                                    <span class="panel-subtitle">Select alert row to open deep inspection drawer</span>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table id="queue"></table>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- ================= VIEW 3: MODEL HEALTH & XAI ================= -->
+                    <div id="view-models" class="page-view hidden">
+                        <section class="panel" id="explainPanel">
+                            <div class="panel-header">
+                                <div>
+                                    <h3 class="panel-title">Model Explainability (XAI)</h3>
+                                    <span class="panel-subtitle">Feature attribution against benign background distribution</span>
+                                </div>
+                            </div>
+                            <div class="grid2">
+                                <div>
+                                    <h4 style="font-size: 12.5px; font-weight: 600; margin: 0 0 10px;">Global Feature Importance</h4>
+                                    <div id="impBuiltin"></div>
+                                </div>
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <h4 style="font-size: 12.5px; font-weight: 600; margin: 0;">SHAP Local Explanation</h4>
+                                        <select id="shapClass" class="form-control" style="width: auto; padding: 4px 8px; font-size: 11.5px;">
+                                            <option value="">All Attack Classes</option>
+                                        </select>
+                                    </div>
+                                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
+                                        <select id="shapMethod" class="form-control" style="width: auto; padding: 4px 8px; font-size: 11.5px;">
+                                            <option value="kernel" selected>Kernel SHAP</option>
+                                            <option value="tree">Tree SHAP</option>
+                                        </select>
+                                        <select id="shapN" class="form-control" style="width: auto; padding: 4px 8px; font-size: 11.5px;">
+                                            <option value="20">20 Flows</option>
+                                            <option value="40" selected>40 Flows</option>
+                                            <option value="80">80 Flows</option>
+                                        </select>
+                                        <span class="kOnly">
+                                            <select id="shapNs" class="form-control" style="width: auto; padding: 4px 8px; font-size: 11.5px;">
+                                                <option value="200">200 Samples</option>
+                                                <option value="500" selected>500 Samples</option>
+                                                <option value="1000">1000 Samples</option>
+                                            </select>
+                                        </span>
+                                        <span class="kOnly">
+                                            <select id="shapBudget" class="form-control" style="width: auto; padding: 4px 8px; font-size: 11.5px;">
+                                                <option value="60">1 Min</option>
+                                                <option value="120" selected>2 Min</option>
+                                                <option value="300">5 Min</option>
+                                            </select>
+                                        </span>
+                                        <span class="tOnly hidden">
+                                            <select id="shapTrees" class="form-control" style="width: auto; padding: 4px 8px; font-size: 11.5px;">
+                                                <option value="0">All Trees</option>
+                                                <option value="50">First 50</option>
+                                            </select>
+                                        </span>
+                                        <button id="shapRun" class="btn-primary-solid" style="padding: 4px 10px; font-size: 11.5px;">Compute SHAP</button>
+                                        <button id="shapStop" class="btn-outline-danger hidden" style="padding: 4px 10px; font-size: 11.5px;">Stop</button>
+                                    </div>
+                                    <p id="shapMsg" style="font-size: 11.5px; color: var(--text-muted); margin: 0 0 10px;"></p>
+                                    <div id="impShap"></div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <details id="healthBox" class="panel" open>
+                            <summary style="font-weight: 600; font-size: 13.5px; cursor: pointer; color: var(--text-primary); margin-bottom: 12px;">Ground Truth Validation & Calibration Metrics</summary>
+                            <p id="healthWarn" style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px;"></p>
+                            <div class="table-container">
+                                <table id="healthTable"></table>
+                            </div>
+                            <div class="panel-header" style="margin-top: 16px;">
+                                <h3 class="panel-title">Confusion Matrix</h3>
+                            </div>
+                            <div class="table-container">
+                                <table id="cmTable" class="cm"></table>
+                            </div>
+                            <div class="panel-header" style="margin-top: 16px;">
+                                <h3 class="panel-title">Calibration Curve</h3>
+                            </div>
+                            <div class="chart"><canvas id="calibChart"></canvas></div>
+                        </details>
+                    </div>
+
+                    <!-- ================= VIEW 4: INGESTION (ADMIN ONLY) ================= -->
+                    <div id="view-ingestion" class="page-view hidden">
+                        <section class="panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h3 class="panel-title">Data Ingestion Pipeline</h3>
+                                    <span class="panel-subtitle">Manage packet capture streams and historical replay feeds</span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid2">
+                                <div class="form-card">
+                                    <div class="form-group">
+                                        <label for="source">Telemetry Source Feed</label>
+                                        <select id="source" class="form-control">
+                                            <option value="replay">Replay Stream (CIC-IDS2017 Dataset)</option>
+                                            <option value="watch">Live Directory Watcher (live/flows.csv)</option>
+                                            <option value="upload">Ad-hoc PCAP / PCAPNG / CSV Ingestion</option>
+                                        </select>
+                                    </div>
+
+                                    <div id="watchBox" class="hidden form-group">
+                                        <label for="watchPath">Monitored CSV Path</label>
+                                        <input id="watchPath" value="live/flows.csv" class="form-control">
+                                    </div>
+
+                                    <div id="uploadBox" class="hidden form-group">
+                                        <label for="uploadFile">Upload Packet Capture (Max 150 MB)</label>
+                                        <input type="file" id="uploadFile" accept=".csv,.pcap,.pcapng,.cap" class="form-control">
+                                        <span id="uploadMsg" class="mono" style="display: block; margin-top: 4px; font-size: 11px; color: var(--text-muted);"></span>
+                                    </div>
+                                </div>
+
+                                <div class="form-card">
+                                    <div class="form-group">
+                                        <label for="rate">Scoring Rate (Events / 2s Tick)</label>
+                                        <input type="number" id="rate" min="1" max="500" value="20" class="form-control">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="day">Replay Scenario Day</label>
+                                        <div style="display: flex; gap: 6px;">
+                                            <select id="day" class="form-control" style="flex: 1;"></select>
+                                            <button id="jump" class="btn-primary-solid">Jump</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- ================= VIEW 5: ACCESS CONTROL (ADMIN ONLY) ================= -->
+                    <div id="view-users" class="page-view hidden">
+                        <section class="panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h3 class="panel-title">Role-Based Access Control (RBAC)</h3>
+                                    <span class="panel-subtitle">Manage operator accounts, credentials, and privilege tiers</span>
+                                </div>
+                            </div>
+
+                            <div class="grid2">
+                                <div>
+                                    <div class="table-container">
+                                        <table id="usersTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>ID</th>
+                                                    <th>Username</th>
+                                                    <th>Full Name</th>
+                                                    <th>Role</th>
+                                                    <th>Last Active</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="usersTableBody">
+                                                <tr><td colspan="6" style="color: var(--text-muted);">Loading accounts…</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div class="form-card">
+                                    <h4 style="font-size: 13px; font-weight: 600; margin: 0 0 12px;">Provision Security Operator</h4>
+                                    <form id="createUserForm">
+                                        <div class="form-group">
+                                            <label for="newUsername">Username</label>
+                                            <input type="text" id="newUsername" class="form-control" required placeholder="operator.name">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="newFullName">Full Name</label>
+                                            <input type="text" id="newFullName" class="form-control" required placeholder="Security Specialist">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="newPassword">Initial Password</label>
+                                            <input type="password" id="newPassword" class="form-control" required placeholder="Min 6 characters">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="newRole">Privilege Tier</label>
+                                            <select id="newRole" class="form-control" required>
+                                                <option value="analyst">Analyst (Triage & Incidents)</option>
+                                                <option value="viewer">Viewer (Read-Only)</option>
+                                                <option value="admin">Administrator (Full System Ops)</option>
+                                            </select>
+                                        </div>
+                                        <button type="submit" class="btn-primary-solid" style="width: 100%; margin-top: 8px;">Provision User</button>
+                                        <div id="createUserMsg" class="mono" style="margin-top: 8px; font-size: 11px;"></div>
+                                    </form>
+                                </div>
+                            </div>
+                        </section>
                     </div>
                 </div>
-            </section>
+            </main>
         </div>
-
-        <!-- ================= VIEW 5: USER MANAGEMENT (ADMIN ONLY) ================= -->
-        <div id="view-users" class="page-view hidden">
-            <section class="panel">
-                <h3>SOC Personnel & Zero-Trust Access Control</h3>
-                <p class="meta">Manage authenticated operators, assign operational roles, and enforce security policies.</p>
-
-                <div class="user-mgmt-grid">
-                    <div>
-                        <h4>Authorized Operators</h4>
-                        <div class="scroll">
-                            <table id="usersTable">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Operator</th>
-                                        <th>Full Name</th>
-                                        <th>SOC Role</th>
-                                        <th>Last Active</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="usersTableBody">
-                                    <tr><td colspan="6" class="meta">Loading personnel directory…</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div style="background: var(--input-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--line);">
-                        <h4 style="margin-top: 0;">Provision Operator Account</h4>
-                        <form id="createUserForm" class="user-form">
-                            <label>Operator Username
-                                <input type="text" id="newUsername" required placeholder="e.g. jdoe">
-                            </label>
-                            <label>Full Name
-                                <input type="text" id="newFullName" required placeholder="e.g. Jane Doe">
-                            </label>
-                            <label>Initial Access Secret
-                                <input type="password" id="newPassword" required placeholder="Min 6 characters">
-                            </label>
-                            <label>Operational Role
-                                <select id="newRole" required>
-                                    <option value="analyst">Threat Analyst (Triage & Incidents)</option>
-                                    <option value="viewer">SOC Auditor (Read-Only Telemetry)</option>
-                                    <option value="admin">SecOps Administrator (Full Clearance)</option>
-                                </select>
-                            </label>
-                            <button type="submit" class="btn-primary" style="margin-top: 8px;">Provision Account</button>
-                            <div id="createUserMsg" class="meta" style="margin-top: 6px;"></div>
-                        </form>
-                    </div>
-                </div>
-            </section>
-        </div>
-    </main>
+    </div>
 
     <!-- Slide-Out Investigation Drawer -->
     <aside id="drawer" class="drawer hidden">
-        <button id="drawerClose" class="close" title="Close drawer">✕</button>
+        <div class="drawer-header">
+            <span style="font-size: 13px; font-weight: 600;">Deep Alert Inspection</span>
+            <button id="drawerClose" class="drawer-close" title="Close drawer">✕</button>
+        </div>
         <div id="drawerBody"></div>
     </aside>
 

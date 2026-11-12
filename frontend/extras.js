@@ -9,52 +9,52 @@ function renderKillChainOverview(stages) {
         return;
     }
     const descs = {
-        1: "PortScan, probes & sweeps",
-        2: "Brute force & credentials",
-        3: "Web exploit, SQLi & XSS",
-        4: "Botnet C2 & lateral pivot",
-        5: "DoS/DDoS & exfiltration"
+        1: "Probes, network sweeps & reconnaissance",
+        2: "Credential brute force & authentication bypass",
+        3: "Web application vulnerabilities & injections",
+        4: "Command & Control / lateral network pivot",
+        5: "Denial of service & data exfiltration"
     };
     box.innerHTML = stages.map((s) => {
         const active = s.count > 0;
         return `
-        <div class="kc-stage-card stage-${s.num} ${active ? 'has-threats' : ''}">
-            <div class="kc-stage-header">
-                <span class="kc-stage-num">Stage ${s.num}</span>
-                <span class="kc-stage-badge">${s.count} ${s.count === 1 ? 'threat' : 'threats'}</span>
+        <div class="stage-pipeline-card ${active ? 'stage-threat-active' : ''}">
+            <div class="stage-pipeline-step">
+                <span class="stage-step-tag">STAGE 0${s.num}</span>
+                <span class="stage-count-tag ${active ? 'active' : ''}">${s.count} ${s.count === 1 ? 'flow' : 'flows'}</span>
             </div>
-            <div class="kc-stage-title">${esc(s.name)}</div>
-            <div class="kc-stage-desc">${esc(descs[s.num] || '')}</div>
+            <div class="stage-name">${esc(s.name)}</div>
+            <div class="stage-desc">${esc(descs[s.num] || '')}</div>
         </div>`;
     }).join("");
 }
 
 function renderStepper(pred) {
-    if (!pred || !pred.next_vector) return '<span class="meta">—</span>';
+    if (!pred || !pred.next_vector) return '<span class="mono" style="color:var(--text-muted); font-size:11px;">—</span>';
     const curr = pred.stage_num || 1;
     const next = pred.next_stage_num || Math.min(5, curr + 1);
 
     const nodes = [1, 2, 3, 4, 5].map((n) => {
-        let cls = "kc-node";
+        let cls = "stepper-dot";
         let title = "";
         if (n === curr) {
-            cls += ` stage-${n} active`;
+            cls += " curr-stage";
             title = `Current stage: ${pred.stage}`;
         } else if (n === next) {
-            cls += ` next`;
+            cls += " next-stage";
             title = `Predicted next stage: ${pred.next_stage || 'Next'}`;
         }
         return `<span class="${cls}" title="${esc(title)}">${n}</span>`;
-    }).join('<span class="kc-node-arrow">›</span>');
+    }).join('<span style="color:var(--text-muted); font-size:10px;">›</span>');
 
     return `
-    <div class="kc-stepper-track">
-        <div class="kc-stepper-nodes" title="Adversary Stage Progression: ${esc(pred.stage)} ➔ ${esc(pred.next_stage || 'Next')}">${nodes}</div>
-        <span class="pred-pill" title="Stage: ${esc(pred.stage)} ➔ ${esc(pred.next_stage || '')}&#10;Action: ${esc(pred.action)}">
-            <span class="pred-badge">🔮 ${esc(pred.next_vector)}</span>
-            <span class="pred-meta" style="font-family:var(--font-mono); font-size:10px;">${Math.round(pred.confidence * 100)}% · ${esc(pred.eta)}</span>
+    <div class="stepper-container">
+        <div class="stepper-track" title="Progression: ${esc(pred.stage)} → ${esc(pred.next_stage || 'Next')}">${nodes}</div>
+        <span class="stepper-vector-tag" title="Stage: ${esc(pred.stage)} → ${esc(pred.next_stage || '')}">
+            <span>Next: ${esc(pred.next_vector)}</span>
+            <span class="mono" style="font-size:10px; margin-left:4px; opacity:0.85;">${Math.round(pred.confidence * 100)}%</span>
         </span>
-        ${pred.action ? `<span class="kc-action-pill" title="Proactive SOC Countermeasure: ${esc(pred.action)}">🛡️ ${esc(pred.action)}</span>` : ''}
+        ${pred.action ? `<span class="stepper-action-tag" title="Action: ${esc(pred.action)}">${esc(pred.action)}</span>` : ''}
     </div>`;
 }
 
@@ -63,10 +63,12 @@ async function loadIncidents() {
     if (document.hidden) return;
     try {
         const d = await api("/api/incidents");
-        $("incSummary").textContent = d.incidents_total
-            ? `${d.alerts_total.toLocaleString()} threat flows correlated into ${d.incidents_total.toLocaleString()} adversary campaigns ` +
-            `(${(d.alerts_total / d.incidents_total).toFixed(1)} flows/campaign)`
-            : "No active adversary campaigns detected.";
+        if ($("incSummary")) {
+            $("incSummary").textContent = d.incidents_total
+                ? `${d.alerts_total.toLocaleString()} alert flows correlated into ${d.incidents_total.toLocaleString()} incident clusters ` +
+                `(${(d.alerts_total / d.incidents_total).toFixed(1)} flows/incident)`
+                : "No active threat incidents.";
+        }
 
         renderKillChainOverview(d.stage_summary);
 
@@ -81,32 +83,36 @@ async function loadIncidents() {
         }
 
         const isViewer = window.currentUser && window.currentUser.role === "viewer";
-        const triageDisabled = isViewer ? 'disabled title="Viewer role cannot triage alerts (Analyst required)"' : '';
+        const triageDisabled = isViewer ? 'disabled title="Analyst permission required"' : '';
 
-        $("incidents").innerHTML = d.incidents.length
-            ? "<tr><th>Severity</th><th>Hostile Source</th><th>Attack Type</th><th>Kill-Chain & Predicted Next Vector</th><th>Flows</th><th>Target Footprint</th><th>First</th><th>Last</th><th>Duration</th><th>Campaign Status</th><th>Actions</th></tr>" +
-            d.incidents.map((r) => {
-                const a = `data-ip="${esc(r.src_ip)}" data-fam="${esc(r.family)}" data-first="${esc(r.first_id)}" data-last="${esc(r.last_id)}"`;
-                const predHtml = renderStepper(r.prediction);
-                return `<tr>
-                    <td><span class="inc-sev-${esc(r.severity)}">${esc(r.severity)}</span></td>
-                    <td><span class="mono" style="color:var(--accent); font-weight:700;">${esc(r.src_ip)}</span></td>
-                    <td><strong>${esc(r.label)}</strong> <span class="meta">(${esc(r.family)})</span></td>
-                    <td class="pred-cell">${predHtml}</td>
-                    <td><span class="soc-tier-badge">${r.n.toLocaleString()}</span></td>
-                    <td><span class="mono" style="font-size:11px;">${r.dst_ips} IPs · ${r.dst_ports} ports</span></td>
-                    <td><span class="mono" style="color:var(--muted);">${esc(r.first)}</span></td>
-                    <td><span class="mono" style="color:var(--muted);">${esc(r.last)}</span></td>
-                    <td><span class="mono">${Math.round(r.duration_s)}s</span></td>
-                    <td><span class="soc-tier-badge" style="background:var(--input-bg);">${esc(r.status)}</span></td>
-                    <td>
-                        <button ${a} data-status="Acknowledged" ${triageDisabled}>✓ Ack</button>
-                        <button ${a} data-status="False positive" ${triageDisabled}>⊘ False pos.</button>
-                        <button ${a} data-status="Escalated" ${triageDisabled} style="color:var(--bad); border-color:rgba(239,68,68,0.3);">▲ Escalate</button>
-                    </td>
-                </tr>`;
-            }).join("")
-            : "";
+        if ($("incidents")) {
+            $("incidents").innerHTML = d.incidents.length
+                ? "<thead><tr><th>Severity</th><th>Origin IP</th><th>Classification</th><th>Kill-Chain & Next Vector</th><th>Flows</th><th>Target Footprint</th><th>First Seen</th><th>Last Seen</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead><tbody>" +
+                d.incidents.map((r) => {
+                    const a = `data-ip="${esc(r.src_ip)}" data-fam="${esc(r.family)}" data-first="${esc(r.first_id)}" data-last="${esc(r.last_id)}"`;
+                    const predHtml = renderStepper(r.prediction);
+                    return `<tr>
+                        <td><span class="inc-sev-${esc(r.severity)}" style="font-size:11.5px; text-transform:uppercase;">${esc(r.severity)}</span></td>
+                        <td><span class="mono" style="font-weight:600;">${esc(r.src_ip)}</span></td>
+                        <td><span style="font-weight:600;">${esc(r.label)}</span> <span style="color:var(--text-muted); font-size:11px;">(${esc(r.family)})</span></td>
+                        <td>${predHtml}</td>
+                        <td><span class="mono">${r.n.toLocaleString()}</span></td>
+                        <td><span class="mono" style="font-size:11px; color:var(--text-secondary);">${r.dst_ips} IPs / ${r.dst_ports} ports</span></td>
+                        <td><span class="mono" style="color:var(--text-muted);">${esc(r.first)}</span></td>
+                        <td><span class="mono" style="color:var(--text-muted);">${esc(r.last)}</span></td>
+                        <td><span class="mono">${Math.round(r.duration_s)}s</span></td>
+                        <td><span class="badge-tag">${esc(r.status)}</span></td>
+                        <td>
+                            <div class="btn-action-group">
+                                <button class="btn-table-action" ${a} data-status="Acknowledged" ${triageDisabled}>Ack</button>
+                                <button class="btn-table-action" ${a} data-status="False positive" ${triageDisabled}>FP</button>
+                                <button class="btn-table-action danger" ${a} data-status="Escalated" ${triageDisabled}>Escalate</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join("") + "</tbody>"
+                : "<tbody><tr><td colspan='11' style='color:var(--text-muted); text-align:center; padding:16px;'>No active correlated incidents.</td></tr></tbody>";
+        }
     } catch (e) { /* connection error handled in refresh */ }
 }
 
@@ -121,7 +127,7 @@ if ($("incidents")) {
                 src_ip: b.dataset.ip, family: b.dataset.fam,
                 first_id: Number(b.dataset.first), last_id: Number(b.dataset.last), status: b.dataset.status
             });
-        } catch (err) { alert("Could not update the incident: " + err.message); }
+        } catch (err) { alert("Could not update incident: " + err.message); }
         loadIncidents();
         refresh();
     });
@@ -133,7 +139,7 @@ loadIncidents();
 let explainData = null, explainTimer = null;
 
 function impList(rows) {
-    if (!rows || !rows.length) return '<p class="meta">Not available.</p>';
+    if (!rows || !rows.length) return '<p style="color:var(--text-muted); font-size:12px;">Data unavailable.</p>';
     const top = rows[0].share || 1;
     return '<ol class="imp">' + rows.map((r) =>
         `<li><span class="name" title="${esc(r.feature)}">${esc(r.feature)}</span>` +
@@ -160,17 +166,17 @@ function renderShap() {
     if ($("shapMsg")) {
         if (running) {
             const p = d.progress;
-            $("shapMsg").textContent = p ? `Computing… ${p.done}/${p.total} flows` : "Computing… (preparing the sample)";
+            $("shapMsg").textContent = p ? `Evaluating ${p.done}/${p.total} flows…` : "Preparing baseline sample…";
         } else if (d.status === "error") {
             $("shapMsg").textContent = d.error;
         } else if (d.status === "done" && d.shap) {
             const r = d.shap;
-            const how = r.method === "kernel" ? `Kernel SHAP, ${r.nsamples} evaluations per flow`
-                : (r.trees ? `Tree SHAP, first ${r.trees} trees` : "Tree SHAP, all trees");
-            $("shapMsg").textContent = `Done in ${d.seconds} s: ${how}, ${r.n} attack flows, benign excluded` +
-                (r.partial ? ` (stopped early: ${r.n} of ${r.planned} planned flows)` : "") + ".";
+            const how = r.method === "kernel" ? `Kernel SHAP (${r.nsamples} evals/flow)`
+                : (r.trees ? `Tree SHAP (${r.trees} trees)` : "Tree SHAP (all trees)");
+            $("shapMsg").textContent = `Completed in ${d.seconds}s (${how}, ${r.n} attack flows evaluated)` +
+                (r.partial ? ` (partial: ${r.n}/${r.planned} flows)` : "") + ".";
         } else {
-            $("shapMsg").textContent = "Click “Compute SHAP” (runs in the background).";
+            $("shapMsg").textContent = "Select parameters and execute SHAP computation.";
         }
     }
     if ($("shapRun")) $("shapRun").disabled = running;
