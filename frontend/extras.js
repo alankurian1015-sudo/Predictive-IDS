@@ -52,21 +52,21 @@ function renderStepper(pred) {
         <div class="kc-stepper-nodes" title="Adversary Stage Progression: ${esc(pred.stage)} ➔ ${esc(pred.next_stage || 'Next')}">${nodes}</div>
         <span class="pred-pill" title="Stage: ${esc(pred.stage)} ➔ ${esc(pred.next_stage || '')}&#10;Action: ${esc(pred.action)}">
             <span class="pred-badge">🔮 ${esc(pred.next_vector)}</span>
-            <span class="pred-meta">${Math.round(pred.confidence * 100)}% · ${esc(pred.eta)}</span>
+            <span class="pred-meta" style="font-family:var(--font-mono); font-size:10px;">${Math.round(pred.confidence * 100)}% · ${esc(pred.eta)}</span>
         </span>
         ${pred.action ? `<span class="kc-action-pill" title="Proactive SOC Countermeasure: ${esc(pred.action)}">🛡️ ${esc(pred.action)}</span>` : ''}
     </div>`;
 }
 
-// ---------- incidents ----------
+// ---------- Incidents ----------
 async function loadIncidents() {
     if (document.hidden) return;
     try {
         const d = await api("/api/incidents");
         $("incSummary").textContent = d.incidents_total
-            ? `${d.alerts_total.toLocaleString()} attack alerts grouped into ${d.incidents_total.toLocaleString()} incidents ` +
-            `(${(d.alerts_total / d.incidents_total).toFixed(1)} alerts per incident)`
-            : "No attack incidents yet.";
+            ? `${d.alerts_total.toLocaleString()} threat flows correlated into ${d.incidents_total.toLocaleString()} adversary campaigns ` +
+            `(${(d.alerts_total / d.incidents_total).toFixed(1)} flows/campaign)`
+            : "No active adversary campaigns detected.";
 
         renderKillChainOverview(d.stage_summary);
 
@@ -84,19 +84,27 @@ async function loadIncidents() {
         const triageDisabled = isViewer ? 'disabled title="Viewer role cannot triage alerts (Analyst required)"' : '';
 
         $("incidents").innerHTML = d.incidents.length
-            ? "<tr><th>Severity</th><th>Source</th><th>Current Type</th><th>Kill-Chain & Next Vector</th><th>Alerts</th><th>Targets</th><th>First</th><th>Last</th><th>Duration</th><th>Status</th><th>Actions</th></tr>" +
+            ? "<tr><th>Severity</th><th>Hostile Source</th><th>Attack Type</th><th>Kill-Chain & Predicted Next Vector</th><th>Flows</th><th>Target Footprint</th><th>First</th><th>Last</th><th>Duration</th><th>Campaign Status</th><th>Actions</th></tr>" +
             d.incidents.map((r) => {
                 const a = `data-ip="${esc(r.src_ip)}" data-fam="${esc(r.family)}" data-first="${esc(r.first_id)}" data-last="${esc(r.last_id)}"`;
                 const predHtml = renderStepper(r.prediction);
-                return `<tr><td class="inc-sev-${esc(r.severity)}">${esc(r.severity)}</td><td>${esc(r.src_ip)}</td>
-            <td>${esc(r.label)} <span class="meta">(${esc(r.family)})</span></td>
-            <td class="pred-cell">${predHtml}</td>
-            <td>${r.n.toLocaleString()}</td>
-            <td>${r.dst_ips} IPs · ${r.dst_ports} ports</td><td>${esc(r.first)}</td><td>${esc(r.last)}</td>
-            <td>${Math.round(r.duration_s)} s</td><td>${esc(r.status)}</td>
-            <td><button ${a} data-status="Acknowledged" ${triageDisabled}>Ack</button>
-                <button ${a} data-status="False positive" ${triageDisabled}>False pos.</button>
-                <button ${a} data-status="Escalated" ${triageDisabled}>Escalate</button></td></tr>`;
+                return `<tr>
+                    <td><span class="inc-sev-${esc(r.severity)}">${esc(r.severity)}</span></td>
+                    <td><span class="mono" style="color:var(--accent); font-weight:700;">${esc(r.src_ip)}</span></td>
+                    <td><strong>${esc(r.label)}</strong> <span class="meta">(${esc(r.family)})</span></td>
+                    <td class="pred-cell">${predHtml}</td>
+                    <td><span class="soc-tier-badge">${r.n.toLocaleString()}</span></td>
+                    <td><span class="mono" style="font-size:11px;">${r.dst_ips} IPs · ${r.dst_ports} ports</span></td>
+                    <td><span class="mono" style="color:var(--muted);">${esc(r.first)}</span></td>
+                    <td><span class="mono" style="color:var(--muted);">${esc(r.last)}</span></td>
+                    <td><span class="mono">${Math.round(r.duration_s)}s</span></td>
+                    <td><span class="soc-tier-badge" style="background:var(--input-bg);">${esc(r.status)}</span></td>
+                    <td>
+                        <button ${a} data-status="Acknowledged" ${triageDisabled}>✓ Ack</button>
+                        <button ${a} data-status="False positive" ${triageDisabled}>⊘ False pos.</button>
+                        <button ${a} data-status="Escalated" ${triageDisabled} style="color:var(--bad); border-color:rgba(239,68,68,0.3);">▲ Escalate</button>
+                    </td>
+                </tr>`;
             }).join("")
             : "";
     } catch (e) { /* connection error handled in refresh */ }
@@ -121,7 +129,7 @@ if ($("incidents")) {
 setInterval(loadIncidents, 3000);
 loadIncidents();
 
-// ---------- feature importance ----------
+// ---------- Feature Importance ----------
 let explainData = null, explainTimer = null;
 
 function impList(rows) {

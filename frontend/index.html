@@ -1,10 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PIDS · Predictive Intrusion Detection System</title>
+    <title>PIDS · Predictive Intrusion Detection & Threat Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- Chart.js: local copy first (static/chart.umd.min.js), CDN as a fallback -->
     <script src="chart.umd.min.js"></script>
@@ -12,29 +15,55 @@
 </head>
 
 <body>
+    <!-- Command Header -->
     <header>
-        <h1>Predictive Intrusion Detection System · SOC Monitoring</h1>
+        <div class="brand-lockup">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <h1>
+                    <span>Predictive IDS</span>
+                    <span class="soc-tier-badge">SOC Level 3</span>
+                </h1>
+            </div>
+        </div>
+
         <div class="header-right">
             <button id="themeToggle" class="theme-toggle" type="button" title="Toggle Dark / Light Mode">
-                <span id="themeIcon">🌙</span> <span id="themeLabel">Dark</span>
+                <span id="themeIcon">☀️</span> <span id="themeLabel">Light</span>
             </button>
-            <span id="wsStatus" class="pill pill-ws" title="Real-time WebSocket Live Feed">● WS: CONNECTING</span>
-            <span id="status" class="pill"></span>
+            <span id="wsStatus" class="pill-ws" title="Real-time WebSocket Live Feed">● WS: CONNECTING</span>
+            <span id="status" class="pill-status">PAUSED</span>
         </div>
     </header>
 
-    <!-- Navigation Bar for Multi-View Routing -->
+    <!-- Top Navigation Tabs & User Menu -->
     <nav class="nav-bar">
         <div class="nav-tabs" id="navTabs">
-            <button class="nav-tab active" data-tab="live">📊 Live Situation Room</button>
-            <button class="nav-tab" data-tab="incidents">🚨 Incidents & Alert Triage <span id="incNavBadge" class="nav-badge hidden">0</span></button>
-            <button class="nav-tab" data-tab="models">🧠 Model Health & XAI</button>
-            <button class="nav-tab" data-tab="ingestion" id="tabIngestion">⚙️ Ingestion & Replay</button>
-            <button class="nav-tab" data-tab="users" id="tabUsers">👥 User Management</button>
+            <button class="nav-tab active" data-tab="live">
+                <span>📊</span> Situation Room
+            </button>
+            <button class="nav-tab" data-tab="incidents">
+                <span>🚨</span> Incidents & Triage 
+                <span id="incNavBadge" class="nav-badge hidden">0</span>
+            </button>
+            <button class="nav-tab" data-tab="models">
+                <span>🧠</span> Model Health & XAI
+            </button>
+            <button class="nav-tab" data-tab="ingestion" id="tabIngestion">
+                <span>⚙️</span> Ingestion & Replay
+            </button>
+            <button class="nav-tab" data-tab="users" id="tabUsers">
+                <span>👥</span> SOC Personnel
+            </button>
         </div>
+
         <div class="user-menu" id="userMenu">
             <div class="user-pill">
-                <span>👤</span>
+                <span class="user-avatar" id="userAvatar">OP</span>
                 <span id="userName">Analyst</span>
                 <span id="userRoleBadge" class="role-badge analyst">Analyst</span>
             </div>
@@ -42,298 +71,322 @@
         </div>
     </nav>
 
-    <p class="meta note" style="margin: 0 16px 8px 16px;">Replay of labelled CIC-IDS2017 flows. The class mix is a demo sample (attacks over-represented), not real-world traffic proportions.</p>
-    <div id="error" class="banner error hidden" style="margin: 0 16px 8px 16px;"></div>
-    <div id="warning" class="banner warn hidden" style="margin: 0 16px 8px 16px;"></div>
-
-    <div class="layout">
-        <!-- Persistent Side Filter Controls -->
-        <aside class="controls">
-            <h2>Filters & Controls</h2>
-            <label class="row"><input type="checkbox" id="live" checked> Live stream</label>
-
-            <!-- Quick Filter Controls -->
-            <label>Min confidence <span id="minConfVal">0.00</span>
-                <input type="range" id="minConf" min="0" max="1" step="0.05" value="0">
-            </label>
-
-            <fieldset>
-                <legend>Severity</legend>
-                <label class="row"><input type="checkbox" class="sev" value="Critical" checked> Critical</label>
-                <label class="row"><input type="checkbox" class="sev" value="High" checked> High</label>
-                <label class="row"><input type="checkbox" class="sev" value="Medium" checked> Medium</label>
-                <label class="row"><input type="checkbox" class="sev" value="Info"> Info</label>
-            </fieldset>
-
-            <fieldset>
-                <legend>Attack family</legend>
-                <div id="famBox"></div>
-            </fieldset>
-
-            <a class="btn" href="/api/export" id="exportLink">Export alerts (CSV)</a>
-            <p id="meta" class="meta"></p>
-        </aside>
-
-        <!-- Main Multi-View Pages Container -->
-        <main>
-            <p id="waiting" class="meta">Waiting for traffic… (switch “Live stream” on)</p>
-
-            <!-- ================= VIEW 1: LIVE SITUATION ROOM ================= -->
-            <div id="view-live" class="page-view">
-                <section id="kpis" class="kpis"></section>
-
-                <section class="panel">
-                    <h3>Live feed: latest flows</h3>
-                    <div class="scroll">
-                        <table id="feed"></table>
-                    </div>
-                </section>
-
-                <section class="grid3">
-                    <div class="panel">
-                        <h3>Traffic over time</h3>
-                        <div class="chart"><canvas id="trafficChart"></canvas></div>
-                    </div>
-                    <div class="panel">
-                        <h3>Attack-type breakdown</h3>
-                        <div class="chart"><canvas id="familyChart"></canvas></div>
-                    </div>
-                    <div class="panel">
-                        <h3>Top attacking source IPs</h3>
-                        <ol id="topIps" class="list"></ol>
-                    </div>
-                </section>
-
-                <section class="grid2">
-                    <div class="panel">
-                        <h3>Most targeted ports</h3>
-                        <div class="chart"><canvas id="portsChart"></canvas></div>
-                    </div>
-                    <div class="panel">
-                        <h3 id="histTitle">Score distribution</h3>
-                        <div class="chart"><canvas id="histChart"></canvas></div>
-                    </div>
-                </section>
-
-                <section class="panel">
-                    <h3>Predictive outlook (next ~60 s)</h3>
-                    <p id="fcNote" class="meta"></p>
-                    <div id="fcKpis" class="kpis small"></div>
-                    <div class="chart tall"><canvas id="forecastChart"></canvas></div>
-                    <p id="fcFamily" class="meta"></p>
-                </section>
+    <!-- Global Threat Filter HUD Toolbar -->
+    <div class="filter-hud" id="filterHud">
+        <div class="hud-group">
+            <div class="hud-item">
+                <span>Live Feed</span>
+                <label class="switch">
+                    <input type="checkbox" id="live" checked>
+                    <span class="slider"></span>
+                </label>
             </div>
 
-            <!-- ================= VIEW 2: INCIDENTS & ALERT TRIAGE ================= -->
-            <div id="view-incidents" class="page-view hidden">
-                <section class="panel">
-                    <h3>Incidents & Predictive Attack Vectors <span class="meta">(attacks from the same source grouped; next vector forecasted via MITRE kill-chain)</span></h3>
-                    <p id="incSummary" class="meta"></p>
-                    <div id="killChainOverview" class="kill-chain-matrix"></div>
-                    <div class="scroll">
-                        <table id="incidents"></table>
-                    </div>
-                </section>
-
-                <section class="panel">
-                    <h3>Alert queue <span class="meta">(click a row to investigate)</span></h3>
-                    <div class="scroll">
-                        <table id="queue"></table>
-                    </div>
-                </section>
+            <div class="hud-item">
+                <span>Min Conf:</span>
+                <div class="range-wrap">
+                    <input type="range" id="minConf" min="0" max="1" step="0.05" value="0">
+                    <span id="minConfVal" class="soc-tier-badge">0.00</span>
+                </div>
             </div>
 
-            <!-- ================= VIEW 3: MODEL HEALTH & XAI ================= -->
-            <div id="view-models" class="page-view hidden">
-                <section class="panel" id="explainPanel">
-                    <h3>Why the model decides: top features</h3>
-                    <p class="meta">Importance shows what the model relies on, not whether a feature points towards attack
-                        or benign. SHAP uses attack flows only (class-balanced over attack types, taken from replay flows)
-                        and the attack-class probabilities as the output. Kernel SHAP measures the difference from typical
-                        benign traffic and estimates by sampling, so rankings can shift a little between runs.</p>
-                    <div class="grid2">
-                        <div>
-                            <h4>Built-in importance (instant)</h4>
-                            <div id="impBuiltin"></div>
-                        </div>
-                        <div>
-                            <h4>SHAP: mean impact
-                                <select id="shapClass">
-                                    <option value="">All attack classes</option>
-                                </select>
-                            </h4>
-                            <div class="rowline">
-                                <label>Method
-                                    <select id="shapMethod">
-                                        <option value="kernel" selected>Kernel (any model, slow)</option>
-                                        <option value="tree">Tree (fast, trees only)</option>
-                                    </select>
-                                </label>
-                                <label>Flows to explain
-                                    <select id="shapN">
-                                        <option>20</option>
-                                        <option selected>40</option>
-                                        <option>80</option>
-                                        <option>150</option>
-                                    </select>
-                                </label>
-                                <label class="kOnly">Evaluations per flow
-                                    <select id="shapNs">
-                                        <option value="200">200 (rough)</option>
-                                        <option value="500" selected>500</option>
-                                        <option value="1000">1000 (slow)</option>
-                                    </select>
-                                </label>
-                                <label class="kOnly">Time limit
-                                    <select id="shapBudget">
-                                        <option value="60">1 min</option>
-                                        <option value="120" selected>2 min</option>
-                                        <option value="300">5 min</option>
-                                    </select>
-                                </label>
-                                <label class="tOnly hidden">Trees
-                                    <select id="shapTrees">
-                                        <option value="0">All</option>
-                                        <option value="50">First 50 (faster)</option>
-                                        <option value="25">First 25 (fastest)</option>
-                                    </select>
-                                </label>
-                                <button id="shapRun">Compute SHAP</button>
-                                <button id="shapStop" class="hidden">Stop</button>
-                            </div>
-                            <p id="shapMsg" class="meta"></p>
-                            <div id="impShap"></div>
-                        </div>
-                    </div>
-                </section>
+            <div class="hud-item">
+                <span>Severity:</span>
+                <div class="sev-pills">
+                    <label class="sev-chip crit"><input type="checkbox" class="sev" value="Critical" checked>Critical</label>
+                    <label class="sev-chip high"><input type="checkbox" class="sev" value="High" checked>High</label>
+                    <label class="sev-chip"><input type="checkbox" class="sev" value="Medium" checked>Medium</label>
+                    <label class="sev-chip"><input type="checkbox" class="sev" value="Info">Info</label>
+                </div>
+            </div>
+        </div>
 
-                <details id="healthBox" class="panel" open>
-                    <summary style="font-weight: 700; font-size: 15px; cursor: pointer;">Model health vs ground truth</summary>
-                    <p id="healthWarn" class="meta"></p>
-                    <div class="scroll">
-                        <table id="healthTable"></table>
-                    </div>
-                    <h3>Confusion matrix (row-normalised)</h3>
-                    <div class="scroll">
-                        <table id="cmTable" class="cm"></table>
-                    </div>
-                    <h3>Calibration: accuracy per confidence bin</h3>
-                    <div class="chart"><canvas id="calibChart"></canvas></div>
+        <div class="hud-group">
+            <div class="hud-item" id="famContainer">
+                <details style="position: relative;">
+                    <summary class="theme-toggle" style="list-style: none; cursor: pointer;">Threat Families ▾</summary>
+                    <div id="famBox" style="position: absolute; right: 0; top: 100%; margin-top: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; z-index: 50; width: 220px; box-shadow: var(--card-shadow-hover);"></div>
                 </details>
             </div>
 
-            <!-- ================= VIEW 4: INGESTION & REPLAY (ADMIN ONLY) ================= -->
-            <div id="view-ingestion" class="page-view hidden">
-                <section class="panel">
-                    <h3>Traffic Ingestion & Packet Capture Engine</h3>
-                    <p class="meta">Configure incoming telemetry feeds or inject raw network traffic captures into the PIDS scoring pipeline.</p>
-                    
-                    <div class="grid2">
-                        <div>
-                            <label><strong>Traffic source</strong>
-                                <select id="source" style="width: 100%; margin-top: 6px;">
-                                    <option value="replay">Replay (CIC-IDS2017 demo stream)</option>
-                                    <option value="watch">Watch flows CSV file in live/</option>
-                                    <option value="upload">Upload flows CSV / PCAP / PCAPNG</option>
-                                </select>
-                            </label>
-
-                            <div id="watchBox" class="hidden" style="margin-top: 12px;">
-                                <label>Flows CSV in the live/ folder
-                                    <input id="watchPath" value="live/flows.csv" style="width: 100%; margin-top: 4px;">
-                                </label>
-                            </div>
-
-                            <div id="uploadBox" class="hidden" style="margin-top: 12px;">
-                                <label>Flows CSV / PCAP (max 150 MB)
-                                    <input type="file" id="uploadFile" accept=".csv,.pcap,.pcapng,.cap" style="width: 100%; margin-top: 4px;">
-                                    <span id="uploadMsg" class="meta"></span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label><strong>Simulation speed (Events per tick)</strong>
-                                <input type="number" id="rate" min="1" max="500" value="20" style="width: 100%; margin-top: 6px;">
-                            </label>
-
-                            <div style="margin-top: 12px;">
-                                <label><strong>Replay timeline jump</strong></label>
-                                <div style="display: flex; gap: 8px; margin-top: 6px;">
-                                    <select id="day" style="flex: 1;"></select>
-                                    <button id="jump">Jump to day</button>
-                                </div>
-                            </div>
-
-                            <div style="display: flex; gap: 8px; margin-top: 16px;">
-                                <button id="ff" style="flex: 1;" title="Scores ~2 minutes of traffic immediately">Fast-forward 2 min</button>
-                                <button id="clear" class="danger" style="flex: 1;">Clear alert history</button>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <!-- ================= VIEW 5: USER MANAGEMENT (ADMIN ONLY) ================= -->
-            <div id="view-users" class="page-view hidden">
-                <section class="panel">
-                    <h3>SOC User & Access Control Management</h3>
-                    <p class="meta">Manage security team roles and access credentials for the PIDS monitoring environment.</p>
-
-                    <div class="user-mgmt-grid">
-                        <div>
-                            <h4>Active SOC Accounts</h4>
-                            <div class="scroll">
-                                <table id="usersTable">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>Username</th>
-                                            <th>Full Name</th>
-                                            <th>Role</th>
-                                            <th>Last Login</th>
-                                            <th>Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="usersTableBody">
-                                        <tr><td colspan="6" class="meta">Loading accounts…</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h4>Add New User</h4>
-                            <form id="createUserForm" class="user-form">
-                                <label>Username
-                                    <input type="text" id="newUsername" required placeholder="e.g. jdoe">
-                                </label>
-                                <label>Full Name
-                                    <input type="text" id="newFullName" required placeholder="e.g. Jane Doe">
-                                </label>
-                                <label>Password
-                                    <input type="password" id="newPassword" required placeholder="Min 6 characters">
-                                </label>
-                                <label>Role
-                                    <select id="newRole" required>
-                                        <option value="analyst">Analyst (Triage & Investigate)</option>
-                                        <option value="viewer">Viewer (Read-Only Auditor)</option>
-                                        <option value="admin">Admin (Full Control)</option>
-                                    </select>
-                                </label>
-                                <button type="submit" class="btn" style="margin-top: 8px;">Create Account</button>
-                                <div id="createUserMsg" class="meta" style="margin-top: 4px;"></div>
-                            </form>
-                        </div>
-                    </div>
-                </section>
-            </div>
-        </main>
+            <a class="theme-toggle" href="/api/export" id="exportLink" style="text-decoration: none;">
+                <span>📥</span> Export CSV
+            </a>
+            <span id="meta" class="meta" style="font-family: var(--font-mono); font-size: 11px;"></span>
+        </div>
     </div>
 
-    <!-- Alert Investigation Drawer -->
+    <!-- Alert / Status Banners -->
+    <div style="padding: 12px 24px 0;">
+        <div id="error" class="banner error hidden"></div>
+        <div id="warning" class="banner warn hidden"></div>
+    </div>
+
+    <!-- Main Viewport Canvas -->
+    <main class="dashboard-viewport">
+        <p id="waiting" class="meta" style="text-align: center; padding: 20px;">Initializing neural telemetry pipeline… (Live stream active)</p>
+
+        <!-- ================= VIEW 1: SITUATION ROOM ================= -->
+        <div id="view-live" class="page-view">
+            <!-- Hero KPIs -->
+            <section id="kpis" class="kpis"></section>
+
+            <!-- Real-time Live Flows Table -->
+            <section class="panel">
+                <h3>
+                    <span>Live Telemetry Feed · Inspected Network Flows</span>
+                    <span class="meta" style="font-size: 11px; font-weight: normal;">Updates every 2 seconds</span>
+                </h3>
+                <div class="scroll">
+                    <table id="feed"></table>
+                </div>
+            </section>
+
+            <!-- Chart Row 1 -->
+            <section class="grid3">
+                <div class="panel">
+                    <h3>Traffic Volume by Attack Family</h3>
+                    <div class="chart"><canvas id="trafficChart"></canvas></div>
+                </div>
+                <div class="panel">
+                    <h3>Threat Vector Distribution</h3>
+                    <div class="chart"><canvas id="familyChart"></canvas></div>
+                </div>
+                <div class="panel">
+                    <h3>Top Hostile Source IPs</h3>
+                    <ol id="topIps" class="list"></ol>
+                </div>
+            </section>
+
+            <!-- Chart Row 2 -->
+            <section class="grid2">
+                <div class="panel">
+                    <h3>Targeted Ports Breakdown</h3>
+                    <div class="chart"><canvas id="portsChart"></canvas></div>
+                </div>
+                <div class="panel">
+                    <h3 id="histTitle">Classifier Anomaly Distribution</h3>
+                    <div class="chart"><canvas id="histChart"></canvas></div>
+                </div>
+            </section>
+
+            <!-- Predictive 60s Forecast Outlook -->
+            <section class="panel">
+                <h3>
+                    <span>Predictive Attack Outlook · 60s Horizon</span>
+                    <span id="fcFamily" class="meta" style="font-size: 12px; font-weight: normal;"></span>
+                </h3>
+                <p id="fcNote" class="meta"></p>
+                <div id="fcKpis" class="kpis small" style="margin-bottom: 12px;"></div>
+                <div class="chart tall"><canvas id="forecastChart"></canvas></div>
+            </section>
+        </div>
+
+        <!-- ================= VIEW 2: INCIDENTS & ALERT TRIAGE ================= -->
+        <div id="view-incidents" class="page-view hidden">
+            <section class="panel">
+                <h3>
+                    <span>Adversary Progression & Predictive Kill-Chain (MITRE ATT&CK)</span>
+                    <span id="incSummary" class="meta" style="font-size: 12px; font-weight: normal;"></span>
+                </h3>
+                <div id="killChainOverview" class="kill-chain-matrix"></div>
+                <h4>Correlated Security Incidents</h4>
+                <div class="scroll">
+                    <table id="incidents"></table>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h3>Active Alert Queue · Priority Triage</h3>
+                <p class="meta">Select any flow to inspect feature anomalies, view top-3 confidence scores, and assign mitigation verdicts.</p>
+                <div class="scroll">
+                    <table id="queue"></table>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= VIEW 3: MODEL HEALTH & XAI ================= -->
+        <div id="view-models" class="page-view hidden">
+            <section class="panel" id="explainPanel">
+                <h3>Explainable AI (XAI) · Neural Decision Attribution</h3>
+                <p class="meta">Identify which network features contribute to malicious classifications. SHAP evaluates attack flows against a baseline benign distribution.</p>
+                <div class="grid2">
+                    <div>
+                        <h4>Global Feature Importance</h4>
+                        <div id="impBuiltin"></div>
+                    </div>
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0;">SHAP Local Explanation</h4>
+                            <select id="shapClass" class="user-form" style="padding: 4px 8px; font-size: 12px;">
+                                <option value="">All Attack Classes</option>
+                            </select>
+                        </div>
+                        <div class="rowline" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                            <select id="shapMethod" class="user-form" style="padding: 4px 8px; font-size: 12px;">
+                                <option value="kernel" selected>Kernel SHAP (Deep/All)</option>
+                                <option value="tree">Tree SHAP (Fast)</option>
+                            </select>
+                            <select id="shapN" class="user-form" style="padding: 4px 8px; font-size: 12px;">
+                                <option value="20">20 Flows</option>
+                                <option value="40" selected>40 Flows</option>
+                                <option value="80">80 Flows</option>
+                            </select>
+                            <span class="kOnly">
+                                <select id="shapNs" class="user-form" style="padding: 4px 8px; font-size: 12px;">
+                                    <option value="200">200 Samples</option>
+                                    <option value="500" selected>500 Samples</option>
+                                    <option value="1000">1000 Samples</option>
+                                </select>
+                            </span>
+                            <span class="kOnly">
+                                <select id="shapBudget" class="user-form" style="padding: 4px 8px; font-size: 12px;">
+                                    <option value="60">1 Min Limit</option>
+                                    <option value="120" selected>2 Min Limit</option>
+                                    <option value="300">5 Min Limit</option>
+                                </select>
+                            </span>
+                            <span class="tOnly hidden">
+                                <select id="shapTrees" class="user-form" style="padding: 4px 8px; font-size: 12px;">
+                                    <option value="0">All Trees</option>
+                                    <option value="50">First 50</option>
+                                </select>
+                            </span>
+                            <button id="shapRun" class="btn-primary" style="padding: 6px 14px;">Compute SHAP</button>
+                            <button id="shapStop" class="btn-danger-outline hidden">Stop</button>
+                        </div>
+                        <p id="shapMsg" class="meta"></p>
+                        <div id="impShap"></div>
+                    </div>
+                </div>
+            </section>
+
+            <details id="healthBox" class="panel" open>
+                <summary style="font-weight: 700; font-size: 15px; cursor: pointer;">Ground Truth Validation & Calibration</summary>
+                <p id="healthWarn" class="meta"></p>
+                <div class="scroll">
+                    <table id="healthTable"></table>
+                </div>
+                <h4 style="margin-top: 20px;">Confusion Matrix (Row-Normalized)</h4>
+                <div class="scroll">
+                    <table id="cmTable" class="cm"></table>
+                </div>
+                <h4 style="margin-top: 20px;">Model Calibration: Accuracy per Confidence Bin</h4>
+                <div class="chart"><canvas id="calibChart"></canvas></div>
+            </details>
+        </div>
+
+        <!-- ================= VIEW 4: INGESTION & REPLAY (ADMIN ONLY) ================= -->
+        <div id="view-ingestion" class="page-view hidden">
+            <section class="panel">
+                <h3>Telemetry Feed & Packet Engine Administration</h3>
+                <p class="meta">Switch real-time telemetry inputs, upload Wireshark PCAPs, or fast-forward replay data.</p>
+                
+                <div class="grid2">
+                    <div style="background: var(--input-bg); padding: 18px; border-radius: 10px; border: 1px solid var(--line);">
+                        <label><strong>Active Ingestion Pipeline:</strong>
+                            <select id="source" class="user-form" style="width: 100%; margin-top: 8px;">
+                                <option value="replay">Replay Stream (CIC-IDS2017 Dataset)</option>
+                                <option value="watch">Live Watcher (Appended CSV in live/)</option>
+                                <option value="upload">Ad-hoc PCAP / PCAPNG / CSV Ingestion</option>
+                            </select>
+                        </label>
+
+                        <div id="watchBox" class="hidden" style="margin-top: 16px;">
+                            <label>Monitored CSV Path:
+                                <input id="watchPath" value="live/flows.csv" class="user-form" style="width: 100%; margin-top: 6px;">
+                            </label>
+                        </div>
+
+                        <div id="uploadBox" class="hidden" style="margin-top: 16px;">
+                            <label>Upload Network Capture (Max 150 MB):
+                                <input type="file" id="uploadFile" accept=".csv,.pcap,.pcapng,.cap" class="user-form" style="width: 100%; margin-top: 6px;">
+                                <span id="uploadMsg" class="meta" style="display: block; margin-top: 4px;"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="background: var(--input-bg); padding: 18px; border-radius: 10px; border: 1px solid var(--line);">
+                        <label><strong>Scoring Engine Velocity (Flows / 2s Tick):</strong>
+                            <input type="number" id="rate" min="1" max="500" value="20" class="user-form" style="width: 100%; margin-top: 8px;">
+                        </label>
+
+                        <div style="margin-top: 16px;">
+                            <label><strong>Replay Day Timeline Jump:</strong></label>
+                            <div style="display: flex; gap: 8px; margin-top: 6px;">
+                                <select id="day" class="user-form" style="flex: 1;"></select>
+                                <button id="jump" class="btn-primary" style="padding: 8px 16px;">Jump</button>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button id="ff" class="btn-primary" style="flex: 1; background: var(--panel-hover); color: var(--text); border: 1px solid var(--line);">Fast-Forward 2 Min</button>
+                            <button id="clear" class="btn-danger-outline" style="flex: 1; padding: 10px;">Purge Alert Memory</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= VIEW 5: USER MANAGEMENT (ADMIN ONLY) ================= -->
+        <div id="view-users" class="page-view hidden">
+            <section class="panel">
+                <h3>SOC Personnel & Zero-Trust Access Control</h3>
+                <p class="meta">Manage authenticated operators, assign operational roles, and enforce security policies.</p>
+
+                <div class="user-mgmt-grid">
+                    <div>
+                        <h4>Authorized Operators</h4>
+                        <div class="scroll">
+                            <table id="usersTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Operator</th>
+                                        <th>Full Name</th>
+                                        <th>SOC Role</th>
+                                        <th>Last Active</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    <tr><td colspan="6" class="meta">Loading personnel directory…</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="background: var(--input-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--line);">
+                        <h4 style="margin-top: 0;">Provision Operator Account</h4>
+                        <form id="createUserForm" class="user-form">
+                            <label>Operator Username
+                                <input type="text" id="newUsername" required placeholder="e.g. jdoe">
+                            </label>
+                            <label>Full Name
+                                <input type="text" id="newFullName" required placeholder="e.g. Jane Doe">
+                            </label>
+                            <label>Initial Access Secret
+                                <input type="password" id="newPassword" required placeholder="Min 6 characters">
+                            </label>
+                            <label>Operational Role
+                                <select id="newRole" required>
+                                    <option value="analyst">Threat Analyst (Triage & Incidents)</option>
+                                    <option value="viewer">SOC Auditor (Read-Only Telemetry)</option>
+                                    <option value="admin">SecOps Administrator (Full Clearance)</option>
+                                </select>
+                            </label>
+                            <button type="submit" class="btn-primary" style="margin-top: 8px;">Provision Account</button>
+                            <div id="createUserMsg" class="meta" style="margin-top: 6px;"></div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Slide-Out Investigation Drawer -->
     <aside id="drawer" class="drawer hidden">
-        <button id="drawerClose" class="close">Close ✕</button>
+        <button id="drawerClose" class="close" title="Close drawer">✕</button>
         <div id="drawerBody"></div>
     </aside>
 
