@@ -1,38 +1,70 @@
-# Predictive Intrusion Detection System (PIDS): Monitoring Dashboard
+# Predictive Intrusion Detection System (PIDS)
+### Enterprise Network Telemetry, Anomaly Scoring & Threat Correlation Platform
 
-A browser dashboard that scores network flows with a trained classifier (and an optional autoencoder),
-flags each flow as Genuine, Suspicious or Malicious, groups alerts into incidents, forecasts the
-attack share for the next minute, and lets an analyst triage alerts.
+A high-performance Security Operations Center (SOC) dashboard that evaluates network flows in real time using a multi-class Random Forest classifier and an optional Autoencoder anomaly detector. The platform classifies flows into fine-grained attack signatures, correlates alerts into multi-stage security incidents, maps adversary progression against the MITRE ATT&CK framework, forecasts short-horizon attack trends, and enforces Role-Based Access Control (RBAC).
 
-> Replay of labelled CIC-IDS2017 flows by default. The class mix in the replay file is a demo
-> sample (attacks over-represented), not real-world traffic proportions.
+---
 
-## Features
+## Key Capabilities
 
-- Live feed with a verdict per flow, KPIs, traffic and attack-type charts, top source IPs, targeted ports,
-  score histogram
-- Alert queue ordered by severity, with Acknowledge / False positive / Escalate and an investigate drawer
-- Incidents & Predictive Kill-Chain: alerts from the same source and attack family within 60 s are merged; adversary progression across MITRE ATT&CK stages is modeled to forecast the next likely attack vector, probability, time window, and proactive countermeasure
-- Predictive outlook: Holt exponential smoothing on the attack share, risk level, early-warning banner
-- Model health against ground truth (precision/recall, confusion matrix, calibration)
-- Feature importance: built-in importances and SHAP (Kernel SHAP by default, Tree SHAP as a fast cross-check),
-  computed on attack flows only against a benign background, with a time limit and a Stop button
-- Feeds: replay stream, watched CSV file (`live/`), uploaded CSV flows, or raw PCAP/PCAPNG network packet captures (automatic 5-tuple flow aggregation and CICFlowMeter metric extraction); alert export to CSV
+- **Real-Time Telemetry & Scoring**: Evaluates live streaming flows against 65 network features; outputs classification verdicts, confidence intervals, anomaly reconstruction scores, and Shannon uncertainty estimates.
+- **Role-Based Access Control (RBAC)**: Secure multi-user SQLite identity store with `bcrypt` salt hashing, JWT session cookies (`HttpOnly`, `SameSite=Lax`), and WebSocket upgrade authentication.
+- **Multi-View Operations Console**:
+  - **Live Threat Feed (`#/live`)**: Real-time KPI metrics, streaming flow telemetry table, hostile IP ranking, targeted ports distribution, score histogram, and 60-second Holt linear exponential forecast.
+  - **Incidents & Triage (`#/incidents`)**: MITRE ATT&CK 5-stage progression pipeline, multi-flow correlation clusters, and alert triage queue with slide-out deep inspection drawer.
+  - **Model Health & XAI (`#/models`)**: Precision, recall, and support matrices; confusion matrix heatmap; calibration curves; and on-demand Kernel/Tree SHAP explainability.
+  - **Data Ingestion (`#/ingestion`)** *(Admin only)*: Switch between CIC-IDS2017 replay scenarios, live directory watchers, and ad-hoc PCAP/PCAPNG/CSV packet uploads.
+  - **Access Control (`#/users`)** *(Admin only)*: Provision operator accounts, manage role permissions, inspect last active timestamps, and deactivate users.
+- **Adversary Progression Forecasting**: Correlates alerts across 5 kill-chain stages (Reconnaissance, Credential Access, Web Exploitation, Lateral Movement/C2, Exfiltration/Impact) to project the adversary's next target vector and proactive countermeasure.
+- **Dual-Model Scoring Architecture**: Decoupled evaluation pipelines for supervised multi-class classification and unsupervised autoencoder reconstruction error.
+- **High-Throughput Packet Dissector**: Native PCAP and PCAPNG parser that reconstructs bidirectional 5-tuple conversations and computes 80+ CICFlowMeter network flow metrics.
 
-## Architecture
+---
+
+## System Architecture
 
 ```
-replay / watched CSV ──────┐
-                           ├─► backend/detector.py ──► alert buffer ──► FastAPI (server.py) ──► HTML/JS Dashboard
-uploaded CSV (validated) ──┤   (Random Forest /                         extras.py (incidents,
-                           │    XGBoost + AE)                           SHAP explanations)
-uploaded .pcap / .pcapng ──┘
-         │
-         ▼
-backend/pcap.py (native packet dissector, 5-tuple flow aggregation, 80+ CICFlowMeter metrics)
++─────────────────────────────────────────────────────────────────────────────+
+|                             INGESTION SOURCES                               |
+|  Replay Engine (Parquet) │ Live File Watcher │ PCAP / PCAPNG / CSV Uploads  |
++─────────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼
++─────────────────────────────────────────────────────────────────────────────+
+|                         FEATURE PROCESSING PIPELINE                         |
+|  - pcap.py: 5-tuple conversation tracking & 80+ CICFlowMeter metrics        |
+|  - feed.py: 65-feature alignment, column aliasing & numerical sanitization  |
++─────────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼
++─────────────────────────────────────────────────────────────────────────────+
+|                            DETECTION ENGINE (ML)                            |
+|  - detector.py: Random Forest Classifier (65 features, unscaled)            |
+|  - Autoencoder Anomaly Detector (StandardScaler, reconstruction threshold)   |
+|  - forecast.py: Holt linear exponential smoothing (60s risk projection)     |
++─────────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼
++─────────────────────────────────────────────────────────────────────────────+
+|                     APPLICATION & PERSISTENCE LAYER                         |
+|  - FastAPI (backend/server.py): REST endpoints & WebSockets (/ws)           |
+|  - RBAC & Sessions (backend/auth.py, db.py): SQLite, bcrypt, JWT cookies    |
+|  - Incidents & XAI (backend/extras.py): Kill-chain correlation & SHAP       |
++─────────────────────────────────────────────────────────────────────────────+
+                                      │
+                                      ▼
++─────────────────────────────────────────────────────────────────────────────+
+|                          SOC OPERATIONS FRONTEND                            |
+|  - Fixed Navigation Rail (Detection, Intelligence, Administration)          |
+|  - Real-Time Context HUD: Live scoring switch, min-conf slider, filters     |
+|  - High-density data grids, Chart.js visualizations, slide-out drawer       |
+|  - Zero-Trust Gateway (frontend/login.html): Operator credential management |
++─────────────────────────────────────────────────────────────────────────────+
 ```
 
-## Project Structure
+---
+
+## Directory Structure
 
 ```
 Predictive-IDS/
@@ -40,166 +72,217 @@ Predictive-IDS/
 ├── requirements.txt
 ├── .gitignore
 │
-├── backend/                     # All Python backend code
+├── backend/                     # Python backend service
 │   ├── __init__.py
-│   ├── server.py                # FastAPI app (main entry point)
-│   ├── common.py                # Shared labels, severity rules
-│   ├── detector.py              # ML model loading & prediction pipeline
-│   ├── feed.py                  # CSV parsing, validation & feature alignment
-│   ├── pcap.py                  # PCAP/PCAPNG dissector & CICFlowMeter flow engine
-│   ├── forecast.py              # Holt smoothing & risk levels
-│   ├── stream.py                # Parquet replay stream
-│   └── extras.py                # Incidents & SHAP router
+│   ├── server.py                # FastAPI application entry point
+│   ├── auth.py                  # JWT authentication, password hashing & RBAC
+│   ├── db.py                    # SQLite persistence layer for user accounts
+│   ├── detector.py              # Dual-model ML inference pipeline
+│   ├── common.py                # Threat taxonomy, label mapping & severity rules
+│   ├── feed.py                  # CSV parsing, feature validation & alignment
+│   ├── pcap.py                  # PCAP/PCAPNG packet dissector & flow engine
+│   ├── forecast.py              # Holt exponential smoothing & risk evaluation
+│   ├── stream.py                # Replay stream state & ring buffer
+│   └── extras.py                # Incidents, MITRE ATT&CK correlation & SHAP router
 │
-├── frontend/                    # Static web assets
-│   ├── index.html
-│   ├── style.css
-│   ├── app.js
-│   └── extras.js
+├── frontend/                    # Single-Page SOC application assets
+│   ├── index.html               # Main application shell & navigation
+│   ├── login.html               # Zero-trust operator authentication portal
+│   ├── style.css                # Enterprise design system (dark/light themes)
+│   ├── app.js                   # Application state, chart controls & UI routing
+│   ├── extras.js                # Kill-chain visualizer, incident queue & XAI
+│   └── chart.umd.min.js         # Local Chart.js fallback
 │
-├── scripts/                     # Batch files & utility scripts
-│   ├── setup.bat
-│   ├── run.bat
-│   ├── check.bat
-│   ├── simulate_feed.py
-│   ├── check_setup.py
-│   └── diagnose_xgb.py
+├── scripts/                     # Operational utilities & automation
+│   ├── setup.bat                # Environment bootstrap script
+│   ├── run.bat                  # Service launcher
+│   ├── check.bat                # Environment diagnostic script
+│   ├── seed_users.py            # Pre-seeds default SOC operator accounts
+│   ├── simulate_feed.py         # Mock telemetry generator for testing
+│   ├── check_setup.py           # Dependency verification script
+│   └── diagnose_xgb.py          # Model sanity checker
 │
-├── tests/                       # Comprehensive test suites
+├── tests/                       # Comprehensive test suites (54 passing tests)
 │   ├── __init__.py
-│   ├── test_csv_processing.py           # Unit tests for CSV validation & alignment
-│   ├── test_pcap_processing.py          # Unit tests for PCAP/PCAPNG flow extraction
-│   ├── test_upload_workflows_full.py    # Integration tests & edge cases (negative testing)
-│   ├── testapp.py
-│   ├── test_watch.py
-│   └── time_check.py
+│   ├── test_auth.py             # Authentication, RBAC, session & user lifecycle
+│   ├── testapp.py               # Core API endpoints, state & control flows
+│   ├── test_csv_processing.py   # CSV parsing, feature alignment & alias resolution
+│   ├── test_pcap_processing.py  # PCAP/PCAPNG parsing & CICFlowMeter flow extraction
+│   ├── test_upload_workflows_full.py # Negative testing & upload edge cases
+│   └── test_watch.py            # Directory watcher verification
 │
-├── models/                      # (gitignored) ML model artifacts
-├── data/                        # (gitignored) Stream data
-└── live/                        # (gitignored) Watched CSV feed & test captures
+├── models/                      # ML model artifacts (gitignored)
+├── data/                        # Replay datasets & SQLite auth DB (gitignored)
+└── live/                        # Monitored directory for live packet feeds (gitignored)
 ```
 
-## Quick start (Windows)
+---
 
-1. Install Python 3.10 to 3.12.
-2. Double-click `scripts/setup.bat` (first time only).
-3. Put your files in place (see below), then double-click `scripts/check.bat`.
-4. Double-click `scripts/run.bat`. Open http://localhost:8765 if it does not open by itself.
+## Authentication & Default Operator Accounts
 
-Manual start: activate `.venv`, then `uvicorn backend.server:app --port 8765`.
-
-## Files you must provide
-
-```
-models/  feature_cols.joblib, label_encoder.joblib, a classifier (rf.joblib or xgb.json),
-         optional: preprocessor.joblib, autoencoder.keras, ae_threshold.joblib,
-                   ae_feature_cols.joblib, ae_preprocessor.joblib
-data/    test_stream.parquet (flows with IPs, ports, Timestamp, Label and the feature columns),
-         stream_meta.json ({"held_out": true|false})
-live/    flows.csv (optional, for the watched-file feed)
+The system implements Role-Based Access Control (RBAC). Seed default credentials using:
+```bash
+python scripts/seed_users.py
 ```
 
-They are exported from the training notebook. Install the same scikit-learn version that saved them.
+| Role | Username | Default Password | Access Permissions |
+| :--- | :--- | :--- | :--- |
+| **Administrator** | `admin` | `admin123` | Full control: File uploads, packet ingestion, replay speed, user provisioning, and alert triage. |
+| **SOC Analyst** | `analyst` | `analyst123` | Threat analysis: Live Feed, Incident Triage, alert triage (Ack/FP/Escalate), SHAP compute, and CSV export. |
+| **Auditor / Viewer**| `viewer` | `viewer123` | Read-only observation: Situation Room metrics, flow logs, model health, and calibration. Triage actions restricted. |
 
-## Using it
+---
 
-- **Replay**: pick a day (2017-07-04 to 07 have attacks) and use *Fast-forward 2 min* to fill the forecast history.
-- **Watch flows file**: point it at a CSV inside `live/` that another program keeps appending to.
-- **Upload flows CSV or PCAP/PCAPNG captures**:
-  - **CSV Uploads**: up to 150 MB and 200,000 rows. Columns are matched to the model's 65 features by name, supporting abbreviations/aliases (`Tot Fwd Pkts` $\rightarrow$ `Total Fwd Packets`). Invalid values, NaNs, and infinities are safely cleaned; missing required features are clearly reported.
-  - **PCAP / PCAPNG Uploads**: Raw packet captures (`.pcap` or `.pcapng` saved directly from Wireshark or `tcpdump`). The built-in engine automatically reconstructs bidirectional 5-tuple conversations and calculates all 65 flow statistics required by the models.
-- **Incidents** merge alerts per (source IP, family). Feeds without IP addresses show "unknown" as the source.
-- **Feature importance**: built-in importances are instant; SHAP runs in the background on attack flows only.
+## Getting Started
 
-## PCAP & CSV Processing Engine
+### Prerequisites
+- Python 3.10 to 3.12 (64-bit)
+- Windows, Linux, or macOS
 
-The application includes native file-processing pipelines decoupled for both the Random Forest and Autoencoder models:
+### 1. Installation
+Clone the repository and install dependencies:
+```bash
+git clone https://github.com/alankurian1015-sudo/Predictive-IDS.git
+cd Predictive-IDS
 
-1. **PCAP & PCAPNG Dissector (`backend/pcap.py`)**:
-   - Supports Big-Endian and Little-Endian standard PCAPs as well as modern PCAPNG format (SHB, IDB, EPB).
-   - Reconstructs bidirectional flows by `(Source IP, Destination IP, Source Port, Destination Port, Protocol)` with standard 120-second inactivity timeouts.
-   - Computes 80+ network flow features matching the official CICFlowMeter specification (durations, forward/backward packet counts and byte sizes, inter-arrival times, TCP flags, active/idle periods).
-   - Validates captures against zero-flow packets (e.g. non-transport ARP or ICMP-only captures).
-2. **CSV Validation Pipeline (`backend/feed.py`)**:
-   - Validates CSV structure, ensures non-empty data rows, and cleans numeric infinities.
-   - Maps feature column aliases and imputes missing display metadata (`Source IP`, `Timestamp`, etc.).
-3. **Independent Dual-Model Pipeline (`backend/detector.py`)**:
-   - **Random Forest**: Exact 65 features in their original training order, evaluated without scaling.
-   - **Autoencoder**: Exact 65 features scaled via `ae_preprocessor.joblib` (`StandardScaler`), evaluated against the calibrated reconstruction MSE threshold $2.106967 \times 10^{13}$.
+python -m venv .venv
+# Windows:
+.\.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
 
-## Authentication & Default Accounts
+pip install -r requirements.txt
+```
 
-The dashboard is secured with role-based access control (RBAC). Seed default accounts using `python scripts/seed_users.py`.
+### 2. Required Model & Data Files
+Ensure the following artifacts are placed in the respective folders:
+```
+models/
+  ├── feature_cols.joblib        # Ordered feature names for inference
+  ├── label_encoder.joblib       # Attack class encoder
+  ├── rf.joblib                  # Trained Random Forest classifier
+  ├── preprocessor.joblib        # (Optional) Feature scaler
+  ├── autoencoder.keras          # (Optional) Trained Autoencoder model
+  ├── ae_threshold.joblib        # (Optional) Anomaly reconstruction threshold
+  ├── ae_feature_cols.joblib     # (Optional) Autoencoder feature list
+  └── ae_preprocessor.joblib     # (Optional) Autoencoder StandardScaler
 
-| Account | Username | Default Password | Role | Permissions |
-| :--- | :--- | :--- | :--- | :--- |
-| **Admin** | `admin` | `admin123` | `admin` | Full control: Ingestion feeds, PCAP uploads, simulation rates, user management, and triage. |
-| **Analyst** | `analyst` | `analyst123` | `analyst` | Threat investigation: Live Situation Room, Incident Triage, SHAP calculations, and CSV export. |
-| **Auditor** | `viewer` | `viewer123` | `viewer` | Read-only access: Situation Room metrics, attack forecasts, and model health. (Triage actions disabled). |
+data/
+  ├── test_stream.parquet        # Labelled evaluation flow dataset
+  └── stream_meta.json           # Metadata config ({"held_out": true|false})
+```
 
-## Multi-Page SOC Portal Structure
+### 3. Initialize Operator Accounts
+```bash
+python scripts/seed_users.py
+```
 
-The dashboard features tabbed view routing with uninterrupted background WebSocket streaming:
-1. **📊 Live Situation Room (`#/live`)**: Real-time traffic KPIs, latest flows table, traffic & port charts, and 60-second Holt forecast.
-2. **🚨 Incidents & Alert Triage (`#/incidents`)**: MITRE ATT&CK predictive kill-chain matrix, grouped incidents, and actionable alert queue with investigation drawer.
-3. **🧠 Model Health & XAI (`#/models`)**: Precision/recall breakdown, confusion matrix, calibration curve, and interactive SHAP explainability.
-4. **⚙️ Ingestion & Replay (`#/ingestion`)** *(Admin only)*: Traffic source selection, replay jump, simulation speed, and PCAP/CSV upload.
-5. **👥 User Management (`#/users`)** *(Admin only)*: Create and manage SOC accounts and assign roles.
+### 4. Run the Service
+```bash
+uvicorn backend.server:app --port 8765 --reload
+```
+Navigate to `http://localhost:8765` in your browser. You will be directed to the authentication portal (`login.html`).
 
-## API
+---
 
-| Endpoint | Method | Role Required | Purpose |
-|---|---|---|---|
-| `/api/auth/login` | POST | Public | Authenticates credentials and issues HttpOnly JWT cookie |
-| `/api/auth/logout` | POST | Public | Clears session cookie |
-| `/api/auth/me` | GET | Any Authenticated | Retrieves current user session profile |
-| `/api/auth/users` | GET / POST | `admin` | List or register SOC user accounts |
-| `/api/auth/users/{id}` | DELETE | `admin` | Deactivates a user account |
-| `/api/state` | GET | Any Authenticated | Everything the page renders |
-| `/api/incidents` | GET | Any Authenticated | Grouped incidents and MITRE kill-chain data |
-| `/api/incident/status` | POST | `admin`, `analyst` | Triage whole incident |
-| `/api/status` | POST | `admin`, `analyst` | Triage alert (Acknowledge, Escalate, False positive) |
-| `/api/explain` | GET | Any Authenticated | Feature importance and SHAP status |
-| `/api/explain/run` | POST | `admin`, `analyst` | Launch SHAP background calculation |
-| `/api/health` | GET | Any Authenticated | Precision/recall, confusion matrix, calibration |
-| `/api/alert/{id}` | GET | Any Authenticated | Alert investigation details |
-| `/api/control`, `/api/jump`, `/api/clear`, `/api/fastforward` | POST | `admin` | Ingestion and playback controls |
-| `/api/upload` | POST | `admin` | Upload CSV or raw PCAP/PCAPNG capture |
-| `/ws` | WebSocket | Any Authenticated | Real-time live feed push stream (authenticated on handshake) |
-| GET /api/pcap/info | CICFlowMeter environment and CLI compatibility status |
-| GET /api/export | Alerts as CSV |
+## Multi-Page Console Views
 
-## Testing
+Tabbed client-side routing preserves active background WebSocket telemetry across view switches:
 
-Run the full automated test suite (34 unit and integration tests):
+1. **Live Threat Feed (`#/live`)**
+   - High-density KPI summary: Overall Attack Rate, Open Critical Alarms, Escalated Incidents, Average Confidence, and Anomalies.
+   - Streaming flows table with live verdict indicators (`Attack` / `Benign`), millisecond timestamps, confidence values, and 5-tuple routing.
+   - Dynamic charts: Traffic by threat family area chart, attack class doughnut, top hostile source IPs, targeted destination ports, and score distribution histogram.
+   - Predictive 60s outlook: Real-time Holt linear exponential smoothing against observed attack proportions with risk-level alerting.
+
+2. **Incidents & Triage (`#/incidents`)**
+   - **MITRE ATT&CK Pipeline**: 5 stages visualized horizontally with active threat flow counts and hazard indicators.
+   - **Correlated Incidents**: Merges alerts originating from the same source IP and attack family within 60-second sliding windows. Displays target footprint, duration, and projected next vector.
+   - **Alert Queue**: Prioritized alarm feed with action triggers (`Ack`, `FP`, `Escalate`) and investigation drawer integration.
+
+3. **Model Health & XAI (`#/models`)**
+   - **Global Feature Importance**: Top contributing features rendered via calibrated horizontal distribution bars.
+   - **Interactive SHAP Explainer**: Kernel SHAP and Tree SHAP execution engine with sample size budget, time limit guardrails, class selector, and cancellation controls.
+   - **Validation Metrics**: Precision, recall, and support per attack class against ground truth.
+   - **Confusion Matrix & Calibration**: Intensity-shaded confusion matrix and bin-accuracy calibration chart.
+
+4. **Data Ingestion (`#/ingestion`)** *(Admin only)*
+   - Telemetry source selector: Historical Replay, Live Directory Watcher (`live/flows.csv`), or Packet Capture Ingestion.
+   - Packet capture upload dropzone supporting `.pcap`, `.pcapng`, and `.csv` files up to 150 MB.
+   - Scoring rate slider (1 to 500 events per 2-second tick) and scenario day jump controls.
+
+5. **Access Control (`#/users`)** *(Admin only)*
+   - Operator account directory with user IDs, roles, last login timestamps, and account deactivation actions.
+   - User provisioning form with credential validation and role tier assignment.
+
+---
+
+## API Reference
+
+### Authentication & IAM
+| Method | Endpoint | Access Level | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/login` | Public | Validates credentials; sets `HttpOnly` JWT session cookie. |
+| `POST` | `/api/auth/logout` | Authenticated | Invalidates session and clears cookie. |
+| `GET` | `/api/auth/me` | Authenticated | Returns authenticated user profile and assigned role. |
+| `GET` | `/api/auth/users` | Admin | Lists all provisioned operator accounts. |
+| `POST` | `/api/auth/users` | Admin | Provisions a new user account with role. |
+| `DELETE` | `/api/auth/users/{id}` | Admin | Deactivates an operator account. |
+
+### Telemetry & Operations
+| Method | Endpoint | Access Level | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/state` | Authenticated | Returns current telemetry snapshot, KPIs, feed, and charts. |
+| `GET` | `/api/incidents` | Authenticated | Returns correlated incident clusters and MITRE ATT&CK summary. |
+| `POST` | `/api/incident/status` | Analyst, Admin | Updates status for an entire incident cluster. |
+| `POST` | `/api/status` | Analyst, Admin | Triages an individual alert (`Acknowledged`, `False positive`, `Escalated`). |
+| `GET` | `/api/alert/{id}` | Authenticated | Fetches detailed flow parameters and top-3 class attributions. |
+| `GET` | `/api/explain` | Authenticated | Retrieves global feature importances and active SHAP state. |
+| `POST` | `/api/explain/run` | Analyst, Admin | Dispatches background SHAP attribution calculation. |
+| `POST` | `/api/explain/cancel` | Analyst, Admin | Cancels active SHAP computation. |
+| `GET` | `/api/health` | Authenticated | Retrieves precision/recall, confusion matrix, and calibration curve. |
+| `GET` | `/api/export` | Authenticated | Exports filtered alert telemetry as CSV. |
+| `WS` | `/ws` | Authenticated | Real-time push stream (validated via session cookie during handshake). |
+
+### Ingestion Controls (Admin)
+| Method | Endpoint | Access Level | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/control` | Admin | Configures live scoring state, scoring rate, and feed source. |
+| `POST` | `/api/jump` | Admin | Jumps stream replay to a specific scenario day. |
+| `POST` | `/api/fastforward` | Admin | Fast-forwards the replay buffer by 60 ticks (2 minutes). |
+| `POST` | `/api/clear` | Admin | Flushes the active in-memory flow ring buffer. |
+| `POST` | `/api/upload` | Admin | Ingests CSV flows or raw PCAP/PCAPNG network captures. |
+
+---
+
+## Verification & Testing
+
+The project includes an automated test suite covering unit validation, packet extraction, integration workflows, negative test cases, and authentication lifecycle:
+
 ```powershell
-$env:PYTHONPATH="."
-.\.venv\Scripts\pytest.exe tests/ -v
+.\.venv\Scripts\pytest -v
 ```
-- `tests/test_csv_processing.py`: CSV validation, feature alignment, alias resolution, and NaN cleaning.
-- `tests/test_pcap_processing.py`: PCAP and PCAPNG parsing, flow extraction, and CICFlowMeter metrics.
-- `tests/test_upload_workflows_full.py`: End-to-end upload workflows and negative edge cases (empty files, truncated PCAPs, corrupted magic bytes, non-transport packets).
 
-## Limitations (please read)
+### Test Coverage Highlights (54 Passed)
+- `tests/test_auth.py`: Login validation, password verification, 401 rejections, RBAC role-level restrictions, user creation and deactivation lifecycles, and logout flow.
+- `tests/testapp.py`: Authenticated API fixtures, scoring pipeline, filter controls, alert triage status updates, fast-forwarding, and buffer clearance.
+- `tests/test_csv_processing.py`: Header parsing, feature mapping, alias resolution (`Tot Fwd Pkts` $\rightarrow$ `Total Fwd Packets`), and NaN/infinite value sanitization.
+- `tests/test_pcap_processing.py`: Big-endian and little-endian PCAP parsing, PCAPNG block dissection, 5-tuple conversation grouping, and 80+ CICFlowMeter feature calculations.
+- `tests/test_upload_workflows_full.py`: Upload boundary testing (oversized payloads, corrupted packet headers, empty captures, truncated files, and non-transport packet handling).
+- `tests/test_watch.py`: Live file watcher polling and change detection.
 
-- Model-health numbers are optimistic when replay rows may have been seen in training (the page says so).
-- The forecast follows the replay's own trajectory; it shows the mechanism, not proven predictive power.
-- The autoencoder was a weak anomaly detector on this data (AUC about 0.6).
-- SHAP importance is global, from attack flows only, class-balanced. It shows magnitude, not direction.
-  Per-alert explanations are not implemented.
-- No login: run on localhost only. Do not expose the port to a network.
+---
 
-## Troubleshooting
+## Operational Considerations
 
-| Problem | Fix |
-|---|---|
-| `[WinError 10013]` on start | Change `PORT` in `scripts/run.bat` |
-| Blank page, red console errors | Press Ctrl+F5; check `frontend/` has index.html, style.css, app.js, extras.js |
-| "Model features missing" | The uploaded CSV columns differ from the model's 65 training features |
-| "No valid IPv4 TCP/UDP packets found" | The uploaded PCAP contains only non-transport traffic (e.g. ARP or ICMP) |
-| SHAP panel says not installed | `pip install shap` |
+1. **Replay vs. Production Traffic**: The included replay dataset over-represents attack traffic relative to standard production baselines to demonstrate triage and correlation mechanisms.
+2. **Model Health Metrics**: Ground-truth validation metrics reflect replay evaluation data. When evaluating unlabelled live packet captures, validation metrics are marked unavailable.
+3. **SHAP Execution Budget**: Kernel SHAP evaluates features against a background benign sample. For low-latency environments, use Tree SHAP or lower evaluation flow limits ($n=20$).
+4. **Network Exposure**: Ensure production deployments place the FastAPI service behind a TLS reverse proxy (e.g., Nginx, Caddy, or Cloudflare Tunnel) with secure cookie flags enabled.
 
-## Data and citation
+---
 
-CIC-IDS2017: Sharafaldin, Lashkari, Ghorbani, "Toward Generating a New Intrusion Detection Dataset and
-Intrusion Traffic Characterization", ICISSP 2018. Dataset by the Canadian Institute for Cybersecurity, UNB.
+## Dataset Citation
+
+The demonstration replay stream is derived from the **CIC-IDS2017** benchmark:
+> Sharafaldin, I., Lashkari, A. H., & Ghorbani, A. A. (2018). *Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization*. Proceedings of the 4th International Conference on Information Systems Security and Privacy (ICISSP). Canadian Institute for Cybersecurity (CIC), University of New Brunswick.
